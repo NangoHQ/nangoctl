@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { registerVersionCommand } from './commands/version.js';
-import { registerLocalCommands } from './commands/local/index.js';
+import { makeLocalCommand } from './commands/local/index.js';
 
 export function buildCli(): Command {
     const program = new Command();
@@ -12,8 +12,13 @@ export function buildCli(): Command {
         .option('--verbose', 'Verbose output');
 
     registerVersionCommand(program);
-    registerLocalCommands(program);
+    program.addCommand(makeLocalCommand());
 
     return program;
+}
+
+export async function run(argv: string[]): Promise<void> {
+    const program = buildCli();
+    await program.parseAsync(argv);
 }
 

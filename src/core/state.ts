@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { readFile, writeFile } from 'node:fs/promises';
 import { ensureDir } from './paths.js';
 
+// Stable resource names for local mode.
+export const LOCAL_CONFIGMAP_NAME = 'nango-local-config';
+export const LOCAL_SECRET_NAME = 'nango-local-secrets';
+
 export const LocalStateSchema = z.object({
   version: z.literal(1),
   clusterRuntime: z.enum(['kind']),
@@ -11,6 +15,8 @@ export const LocalStateSchema = z.object({
   release: z.string(),
   chartRef: z.string(),
   chartVersion: z.string().optional(),
+  // Seed used to deterministically generate local secrets. Stored locally only.
+  seed: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

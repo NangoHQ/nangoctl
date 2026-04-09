@@ -1,25 +1,26 @@
 import { Command } from 'commander';
-import { makeLocalInstallCommand } from './install.js';
-import { makeLocalStatusCommand } from './status.js';
-import { makeLocalLogsCommand } from './logs.js';
-import { makeLocalOpenCommand } from './open.js';
-import { makeLocalCredentialsCommand } from './credentials.js';
-import { makeLocalUninstallCommand } from './uninstall.js';
-import { makeLocalDoctorCommand } from './doctor.js';
-import { makeLocalConfigCommand } from './config.js';
+import { buildLocalInstallCommand } from './install.js';
+import { buildLocalStatusCommand } from './status.js';
+import { buildLocalLogsCommand } from './logs.js';
+import { buildLocalOpenCommand } from './open.js';
+import { buildLocalCredentialsCommand } from './credentials.js';
+import { buildLocalUninstallCommand } from './uninstall.js';
+import { buildLocalDoctorCommand } from './doctor.js';
+import { buildLocalConfigCommand } from './config.js';
 
 export function makeLocalCommand(): Command {
-  const cmd = new Command('local')
+  return new Command('local')
     .description('Run Nango locally (Kubernetes-first)')
-    .addCommand(makeLocalInstallCommand())
-    .addCommand(makeLocalStatusCommand())
-    .addCommand(makeLocalLogsCommand())
-    .addCommand(makeLocalOpenCommand())
-    .addCommand(makeLocalCredentialsCommand())
-    .addCommand(makeLocalUninstallCommand())
-    .addCommand(makeLocalDoctorCommand())
-    .addCommand(makeLocalConfigCommand());
-
-  return cmd;
+    .addCommand(buildLocalInstallCommand())
+    .addCommand(buildLocalStatusCommand())
+    .addCommand(buildLocalLogsCommand())
+    .addCommand(buildLocalOpenCommand())
+    .addCommand(buildLocalCredentialsCommand())
+    .addCommand(buildLocalUninstallCommand())
+    .addCommand(buildLocalDoctorCommand())
+    .addCommand(buildLocalConfigCommand());
 }
 
+export function registerLocalCommands(program: Command): void {
+  program.addCommand(makeLocalCommand());
+}

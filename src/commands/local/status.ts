@@ -1,47 +1,25 @@
 import { Command } from 'commander';
-import { z } from 'zod';
-import { createCmd } from '../../core/command.js';
-import { getDefaultProfile, type Profile } from '../../core/profile.js';
-import { Helm } from '../../core/helm.js';
-import { Kubectl } from '../../core/kubectl.js';
-import { renderStatus } from '../../core/status.js';
 
-const schema = z.object({
-  json: z.boolean().default(false),
-  verbose: z.boolean().default(false),
-  namespace: z.string().default(getDefaultProfile().namespace),
-  release: z.string().default(getDefaultProfile().release),
-  context: z.string().optional(),
-  watch: z.boolean().default(false)
-});
+import { getDefaultNamespace, getDefaultRelease } from '../../core/defaults.js';
+import { renderHuman } from '../../core/output/render.js';
 
-export function registerLocalStatus(parent: Command) {
-  parent
-    .command('status')
+export function buildLocalStatusCommand(): Command {
+  return new Command('status')
     .description('Show local Nango status (cluster, helm release, pods)')
-    .option('--namespace <ns>', 'Namespace', getDefaultProfile().namespace)
-    .option('--release <name>', 'Helm release name', getDefaultProfile().release)
-    .option('--context <kubecontext>', 'Kubernetes context')
+    .option('--namespace <ns>', 'Namespace', getDefaultNamespace())
+    .option('--release <name>', 'Helm release name', getDefaultRelease())
+    .option('--context <kubecontext>', 'Kubernetes context (advanced)')
     .option('--watch', 'Watch status (poll)', false)
-    .action(
-      createCmd(schema, async (opts, ctx) => {
-        const profile: Profile = {
-          ...getDefaultProfile(),
-          namespace: opts.namespace,
-          release: opts.release,
-          kubeContext: opts.context
-        };
-
-        const kubectl = new Kubectl(ctx.proc, { kubeContext: profile.kubeContext });
-        const helm = new Helm(ctx.proc, { kubeContext: profile.kubeContext });
-
-        const snapshot = await renderStatus({ kubectl, helm, profile, json: opts.json });
-        ctx.out.write(snapshot);
-
-        if (opts.watch) {
-          ctx.out.writeLine('\n(watch mode not implemented in scaffold)');
-        }
-      })
-    );
+    .action(async (opts) => {
+      renderHuman({
+        title: 'Not implemented yet',
+        body: [
+          'This is the scaffold for `nangoctl local status`.',
+          `Target namespace: ${opts.namespace}`,
+          `Release: ${opts.release}`,
+          opts.watch ? '(watch mode will be added later)' : '',
+        ].filter(Boolean),
+      });
+    });
 }
 

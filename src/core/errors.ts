@@ -12,6 +12,13 @@ export class NangoctlError extends Error {
   }
 }
 
+// Generic error type used for internal (non-user) failures.
+export class CliError extends NangoctlError {
+  constructor(code: string, message: string, opts?: { cause?: unknown; hints?: string[] }) {
+    super({ code, message, cause: opts?.cause, hints: opts?.hints });
+  }
+}
+
 export class PreflightError extends NangoctlError {
   constructor(message: string, hints: string[] = [], cause?: unknown) {
     super({ code: 'PREFLIGHT_FAILED', message, hints, cause });

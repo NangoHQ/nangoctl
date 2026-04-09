@@ -1,80 +1,76 @@
-import { execa } from 'execa';
-import { z } from 'zod';
-import { NangoctlError, PreflightError } from './errors.js';
-import type { Logger } from './output/render.js';
+import type { ProcRunner } from './proc.js';
+import { PreflightError } from './errors.js';
 
-const KubeContext = z.string().min(1);
+export class Kubectl {
+  constructor(
+    private readonly proc: ProcRunner,
+    private readonly defaults: { kubeContext?: string; namespace?: string } = {}
+  ) {}
 
-export interface KubectlOptions {
-  context?: string;
-  namespace?: string;
-  logger: Logger;
-}
+  async preflight(): Promise<void> {
+    const res = await this.proc.run('kubectl', ['version', '--client=true'], {
+      allowNonZeroExit: true,
+      quiet: true,
+    });
+    if (res.exitCode !== 0) {
+      throw new PreflightError('Missing prerequisite: kubectl', [
+        'Install kubectl: https://kubernetes.io/docs/tasks/tools/',
+      ]);
+    }
+  }
 
-export async function assertKubectlAvailable(): Promise<void> {
-  try {
-    await execa('kubectl', ['version', '--client=true'], { stdio: 'ignore' });
-  } catch {
-    throw new PreflightError('kubectl is required but was not found or is not working.', {
-      hint: 'Install kubectl: https://kubernetes.io/docs/tasks/tools/',
+  async applyYaml(yaml: string, opts: { kubeContext?: string; namespace?: string } = {}): Promise<void> {
+    const args = this.withDefaults(['apply', '-f', '-'], opts);
+    await this.proc.run('kubectl', args, { stdin: yaml, stdio: 'pipe' });
+  }
+
+  async ensureNamespace(namespace: string, opts: { kubeContext?: string } = {}): Promise<void> {
+    const nsYaml = `apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ${namespace}\n`;
+    await this.applyYaml(nsYaml, { ...opts, namespace: undefined });
+  }
+
+  async getPodsWide(opts: { kubeContext?: string; namespace?: string } = {}): Promise<string> {
+    const res = await this.proc.run('kubectl', this.withDefaults(['get', 'pods', '-o', 'wide'], opts), {
+      quiet: true,
+    });
+    return res.stdout.trim();
+  }
+
+  async logsBySelector(params: {
+    selector: string;
+    follow?: boolean;
+    since?: string;
+    tail?: number;
+    kubeContext?: string;
+    namespace?: string;
+  }): Promise<void> {
+    const args = this.withDefaults(['logs', '-l', params.selector], params);
+    if (params.follow ?? true) args.push('-f');
+    if (params.since) args.push('--since', params.since);
+    if (params.tail) args.push('--tail', String(params.tail));
+    await this.proc.run('kubectl', args, { stdio: 'inherit' });
+  }
+
+  /** Raw kubectl for advanced use (e.g. delete pvc, delete ns). */
+  async run(
+    args: string[],
+    opts: { kubeContext?: string; namespace?: string; allowNonZeroExit?: boolean; skipNamespace?: boolean } = {}
+  ): Promise<void> {
+    await this.proc.run('kubectl', this.withDefaults(args, opts), {
+      stdio: 'inherit',
+      allowNonZeroExit: opts.allowNonZeroExit,
     });
   }
-}
 
-export async function kubectl(args: string[], opts: KubectlOptions): Promise<{ stdout: string; stderr: string }> {
-  const finalArgs = [...args];
-  if (opts.context) {
-    finalArgs.unshift('--context', KubeContext.parse(opts.context));
-  }
-  if (opts.namespace && !finalArgs.includes('-n') && !finalArgs.includes('--namespace')) {
-    finalArgs.unshift('-n', opts.namespace);
-  }
-
-  try {
-    const res = await execa('kubectl', finalArgs, { stdio: 'pipe' });
-    return { stdout: res.stdout, stderr: res.stderr };
-  } catch (e: any) {
-    throw new NangoctlError('kubectl command failed.', {
-      cause: e,
-      details: { args: finalArgs, stderr: e?.stderr, stdout: e?.stdout, exitCode: e?.exitCode },
-    });
+  private withDefaults(
+    args: string[],
+    opts: { kubeContext?: string; namespace?: string; skipNamespace?: boolean }
+  ): string[] {
+    const kubeContext = opts.kubeContext ?? this.defaults.kubeContext;
+    const namespace = opts.skipNamespace ? undefined : opts.namespace ?? this.defaults.namespace;
+    const out = [...args];
+    if (namespace) out.unshift('-n', namespace);
+    if (kubeContext) out.unshift('--context', kubeContext);
+    return out;
   }
 }
-
-export async function applyYaml(yaml: string, opts: KubectlOptions): Promise<void> {
-  try {
-    await execa('kubectl', buildArgs(['apply', '-f', '-'], opts), { input: yaml, stdio: 'pipe' });
-  } catch (e: any) {
-    throw new NangoctlError('Failed to apply Kubernetes manifests.', {
-      cause: e,
-      details: { stderr: e?.stderr, stdout: e?.stdout },
-    });
-  }
-}
-
-export async function ensureNamespace(namespace: string, opts: KubectlOptions): Promise<void> {
-  // Use apply for idempotency.
-  const nsYaml = `apiVersion: v1
-kind: Namespace
-metadata:
-  name: ${namespace}
-`;
-  await applyYaml(nsYaml, { ...opts, namespace: undefined });
-}
-
-export async function getPodsTable(opts: KubectlOptions): Promise<string> {
-  const { stdout } = await kubectl(['get', 'pods', '-o', 'wide'], opts);
-  return stdout.trim();
-}
-
-function buildArgs(args: string[], opts: KubectlOptions): string[] {
-  const finalArgs = [...args];
-  if (opts.context) {
-    finalArgs.unshift('--context', KubeContext.parse(opts.context));
-  }
-  if (opts.namespace && !finalArgs.includes('-n') && !finalArgs.includes('--namespace')) {
-    finalArgs.unshift('-n', opts.namespace);
-  }
-  return finalArgs;
-}
-

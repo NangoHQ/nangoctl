@@ -13,8 +13,26 @@ export const localInstallOptionsSchema = z.object({
   serverPort: z.coerce.number().int().min(1024).max(65535).default(4280),
   waitTimeout: z.string().default('10m'),
   valuesFile: z.string().optional(),
-  set: z.array(z.string()).default([])
+  set: z.array(z.string()).default([]),
 });
 
 export type LocalInstallOptions = z.infer<typeof localInstallOptionsSchema>;
 
+/** Non-secret runtime shape passed into ConfigMap generation. */
+export const LocalRuntimeConfigSchema = z.object({
+  nodeEnv: z.string(),
+  serverPortInPod: z.number(),
+  authAllowSignup: z.boolean(),
+  publicBaseUrl: z.string(),
+  inClusterUrls: z.object({
+    server: z.string(),
+    persist: z.string(),
+    orchestrator: z.string(),
+    jobs: z.string(),
+    runner: z.string(),
+  }),
+  runnerNodeId: z.string(),
+  enterpriseMode: z.boolean().optional(),
+});
+
+export type LocalRuntimeConfig = z.infer<typeof LocalRuntimeConfigSchema>;

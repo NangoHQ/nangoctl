@@ -1,42 +1,32 @@
 import { Command } from 'commander';
 import { z } from 'zod';
-import { createCommandLogger } from '../../core/output/render.js';
-import { LocalContext } from '../../core/context.js';
-import { loadLocalState } from '../../core/state.js';
+import { getGlobalCliOptions } from '../../core/context.js';
+import { renderHuman } from '../../core/output/render.js';
 
 const optsSchema = z.object({
-  json: z.boolean().optional(),
-  showSecrets: z.boolean().optional(),
+  json: z.boolean().default(false),
+  showSecrets: z.boolean().default(false)
 });
 
 export function buildLocalCredentialsCommand(): Command {
-  return new Command('credentials')
+  const cmd = new Command('credentials')
     .description('Show local bootstrap/admin credentials')
-    .option('--show-secrets', 'Print secret values (explicit)')
+    .option('--show-secrets', 'Print secret values (explicit)', false)
     .action(async (rawOpts) => {
-      const opts = optsSchema.parse({
-        json: Boolean(rawOpts.json),
-        showSecrets: Boolean(rawOpts.showSecrets),
-      });
+      const global = getGlobalCliOptions(cmd);
+      const opts = optsSchema.parse({ json: global.json, showSecrets: Boolean(rawOpts.showSecrets) });
 
-      const ctx = await LocalContext.load();
-      const log = createCommandLogger({ json: opts.json });
-
-      const state = await loadLocalState(ctx.stateDir);
-
-      // MVP: show persisted identifiers; secret fetching from Kubernetes is added in later iteration.
-      log.info({
-        message: 'Local credentials',
-        data: {
-          stateDir: ctx.stateDir,
-          namespace: state?.namespace ?? ctx.namespace,
-          release: state?.release ?? ctx.release,
-          admin: state?.secrets?.admin ?? null,
-          note: opts.showSecrets
-            ? 'Secret materialization/reading from Kubernetes will be implemented in local-config-secrets-design.'
-            : 'Use --show-secrets to print secret values once implemented.',
-        },
+      // MVP scaffold: once install writes state+secrets, this command will read from state dir and/or Kubernetes Secret.
+      if (opts.json) {
+        process.stdout.write(JSON.stringify({ ok: true, note: 'Not implemented yet' }) + '\n');
+        return;
+      }
+      renderHuman({
+        title: 'Not implemented yet',
+        body: ['This is the scaffold for `nangoctl local credentials`.']
       });
     });
+
+  return cmd;
 }
 

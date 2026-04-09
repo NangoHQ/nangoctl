@@ -1,11 +1,15 @@
 import { execa } from 'execa';
 import { PreflightError } from './errors.js';
-import type { ProcLogger } from './proc.js';
+
+export type KindLogger = {
+  debug: (msg: string) => void;
+  info: (msg: string) => void;
+};
 
 export type KindEnsureClusterArgs = {
     clusterName: string;
     createIfMissing: boolean;
-    logger: ProcLogger;
+    logger: KindLogger;
 };
 
 export async function kindIsInstalled(): Promise<boolean> {
@@ -27,9 +31,9 @@ export async function kindListClusters(): Promise<string[]> {
 
 export async function kindEnsureCluster({ clusterName, createIfMissing, logger }: KindEnsureClusterArgs): Promise<void> {
     if (!(await kindIsInstalled())) {
-        throw new PreflightError('Missing required dependency: kind', {
-            hint: 'Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation'
-        });
+        throw new PreflightError('Missing required dependency: kind', [
+            'Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation',
+        ]);
     }
 
     const clusters = await kindListClusters();
@@ -39,9 +43,9 @@ export async function kindEnsureCluster({ clusterName, createIfMissing, logger }
     }
 
     if (!createIfMissing) {
-        throw new PreflightError(`kind cluster "${clusterName}" not found`, {
-            hint: `Re-run with --create-cluster to provision ${clusterName}`
-        });
+        throw new PreflightError(`kind cluster "${clusterName}" not found`, [
+            `Re-run with --create-cluster to provision ${clusterName}`,
+        ]);
     }
 
     logger.info(`Creating kind cluster "${clusterName}"...`);

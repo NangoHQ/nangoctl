@@ -1,47 +1,49 @@
-import type { Command } from 'commander';
-
+import { Command } from 'commander';
 import { z } from 'zod';
-import { kubectl } from '../../core/kubectl.js';
-import { CLIError } from '../../core/errors.js';
-import { output } from '../../core/output/output.js';
-import { resolveLocalContext } from '../../core/local/context.js';
 
-const LogsOptsSchema = z.object({
+import { createCmd } from '../../core/command.js';
+import { getDefaultNamespace } from '../../core/defaults.js';
+import { Kubectl } from '../../core/kubectl.js';
+
+const schema = z.object({
+  json: z.boolean().default(false),
+  verbose: z.boolean().default(false),
+  namespace: z.string().default(getDefaultNamespace()),
+  context: z.string().optional(),
   service: z.enum(['server', 'persist', 'orchestrator', 'jobs', 'runner', 'all']).default('server'),
   follow: z.boolean().default(true),
   since: z.string().optional(),
-  tail: z.number().int().positive().optional(),
-  namespace: z.string().optional(),
-  context: z.string().optional(),
-  json: z.boolean().optional()
+  tail: z.coerce.number().int().positive().optional(),
 });
 
-export function registerLocalLogsCommand(local: Command) {
-  local
-    .command('logs')
+export function buildLocalLogsCommand(): Command {
+  const cmd = new Command('logs')
     .description('Stream logs for local Nango services')
+    .option('--namespace <ns>', 'Namespace', getDefaultNamespace())
+    .option('--context <kubecontext>', 'Kubernetes context')
     .option('-s, --service <name>', 'Service: server|persist|orchestrator|jobs|runner|all', 'server')
     .option('-f, --follow', 'Follow logs', true)
     .option('--no-follow', 'Do not follow logs')
     .option('--since <duration>', 'Only return logs newer than a relative duration like 1h, 5m')
-    .option('--tail <n>', 'Lines of recent log file to display', (v) => Number(v))
-    .action(async (rawOpts) => {
-      const opts = LogsOptsSchema.safeParse(rawOpts);
-      if (!opts.success) throw new CLIError('Invalid options', { cause: opts.error });
-      const ctx = await resolveLocalContext({ namespace: opts.data.namespace, context: opts.data.context });
+    .option('--tail <n>', 'Lines of recent log file to display')
+    .action(
+      createCmd(schema, async (opts, ctx) => {
+        const kubectl = new Kubectl(ctx.proc, { kubeContext: opts.context });
 
-      const selector =
-        opts.data.service === 'all'
-          ? 'app.kubernetes.io/component'
-          : `app.kubernetes.io/component=${opts.data.service}`;
+        const selector =
+          opts.service === 'all' ? 'app.kubernetes.io/component' : `app.kubernetes.io/component=${opts.service}`;
 
-      const args = ['logs', '-n', ctx.namespace, '-l', selector];
-      if (opts.data.follow) args.push('-f');
-      if (opts.data.since) args.push('--since', opts.data.since);
-      if (opts.data.tail) args.push('--tail', String(opts.data.tail));
+        ctx.out.writeLine(`Tailing logs in namespace ${opts.namespace} (${opts.service})`);
+        await kubectl.logsBySelector({
+          namespace: opts.namespace,
+          selector,
+          follow: opts.follow,
+          since: opts.since,
+          tail: opts.tail,
+        });
+      })
+    );
 
-      output.info(`Tailing logs in namespace ${ctx.namespace} (${opts.data.service})`);
-      await kubectl(args, { context: ctx.kubeContext, stdio: 'inherit' });
-    });
+  return cmd;
 }
 

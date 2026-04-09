@@ -31,3 +31,9 @@ export function mergeYamlDocuments(yamlDocs: string[]): string {
     return stringifyYaml(merged);
 }
 
+/** Merge two parsed YAML objects (e.g. base defaults + generated overlay). */
+export function mergeValues(base: YamlValue, overlay: YamlValue): Record<string, unknown> {
+    const merged = deepMerge(base, overlay);
+    return merged as Record<string, unknown>;
+}
+

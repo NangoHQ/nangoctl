@@ -1,4 +1,4 @@
-import { execa, type ExecaChildProcess } from 'execa';
+import { execa, type Subprocess } from 'execa';
 
 export type PortForwardSpec = {
   namespace: string;
@@ -9,7 +9,7 @@ export type PortForwardSpec = {
 };
 
 export class PortForwardManager {
-  private child: ExecaChildProcess | null = null;
+  private child: Subprocess | null = null;
 
   isRunning(): boolean {
     return Boolean(this.child && this.child.exitCode === null);
@@ -32,7 +32,7 @@ export class PortForwardManager {
     this.child = null;
     if (!child) return;
     if (child.exitCode !== null) return;
-    child.kill('SIGINT', { forceKillAfterTimeout: 2000 });
+    child.kill('SIGTERM');
   }
 }
 

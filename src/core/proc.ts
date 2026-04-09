@@ -1,5 +1,5 @@
 import { execa, type Options as ExecaOptions } from 'execa';
-import { NangoctlError } from './errors.js';
+import { ProcError } from './errors.js';
 
 export type ProcResult = {
     stdout: string;
@@ -11,7 +11,11 @@ export type ProcRunOptions = {
     cwd?: string;
     env?: Record<string, string | undefined>;
     stdio?: 'inherit' | 'pipe';
+    /** Pipe stdin from this string (e.g. kubectl apply -f -) */
+    stdin?: string;
     redact?: Array<string>;
+    quiet?: boolean;
+    allowNonZeroExit?: boolean;
 };
 
 export class ProcRunner {
@@ -21,21 +25,28 @@ export class ProcRunner {
         const execaOpts: ExecaOptions = {
             cwd: opts.cwd,
             env: { ...this.baseEnv, ...opts.env },
-            stdio: opts.stdio ?? 'pipe'
+            stdio: opts.stdio ?? (opts.quiet ? 'ignore' : 'pipe'),
+            input: opts.stdin,
         };
 
         try {
             const res = await execa(cmd, args, execaOpts);
-            return { stdout: res.stdout ?? '', stderr: res.stderr ?? '', exitCode: res.exitCode ?? 0 };
+            const out = typeof res.stdout === 'string' ? res.stdout : String(res.stdout ?? '');
+            const errOut = typeof res.stderr === 'string' ? res.stderr : String(res.stderr ?? '');
+            return { stdout: out, stderr: errOut, exitCode: res.exitCode ?? 0 };
         } catch (err: any) {
-            // execa throws on non-zero; capture best-effort output
-            const stdout = err?.stdout ?? '';
-            const stderr = err?.stderr ?? '';
+            const stdout = typeof err?.stdout === 'string' ? err.stdout : String(err?.stdout ?? '');
+            const stderr = typeof err?.stderr === 'string' ? err.stderr : String(err?.stderr ?? '');
             const exitCode = err?.exitCode ?? 1;
-            throw new NangoctlError(`${cmd} failed`, {
-                hint: this.redact(`Command: ${cmd} ${args.join(' ')}`, opts.redact),
-                details: this.redact((stderr || stdout || String(err)).slice(0, 8000), opts.redact),
-                cause: err
+            if (opts.allowNonZeroExit) {
+                return { stdout, stderr, exitCode };
+            }
+            throw new ProcError({
+                message: `${cmd} failed`,
+                command: this.redact(`${cmd} ${args.join(' ')}`, opts.redact),
+                exitCode,
+                stderr: this.redact((stderr || stdout || String(err)).slice(0, 8000), opts.redact),
+                cause: err,
             });
         }
     }
@@ -50,4 +61,3 @@ export class ProcRunner {
         return out;
     }
 }
-

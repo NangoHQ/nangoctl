@@ -1,22 +1,21 @@
-import type { Command } from 'commander';
+import { Command } from 'commander';
 
-import { getStateDir } from '../../core/paths.js';
-import { renderJsonOrHuman } from '../../core/output/render.js';
+import { getLocalPaths } from '../../core/paths.js';
+import { renderJson, renderText } from '../../core/output/render.js';
 
-export function registerLocalConfigCommand(local: Command) {
-  local
-    .command('config')
+export function buildLocalConfigCommand(): Command {
+  return new Command('config')
     .description('Show local config paths and effective defaults')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
-      const stateDir = getStateDir();
-      renderJsonOrHuman(
-        { stateDir },
-        () => {
-          process.stdout.write(`State directory: ${stateDir}\n`);
-        },
-        { json: Boolean(opts.json) }
-      );
+      const paths = await getLocalPaths();
+      if (opts.json) {
+        renderJson({ ok: true, paths });
+        return;
+      }
+      renderText(`State directory: ${paths.stateDir}`);
+      renderText(`State file:      ${paths.stateFile}`);
+      renderText(`Values overlay:  ${paths.generatedValuesFile}`);
     });
 }
 

@@ -5,11 +5,12 @@ import fs from 'node:fs/promises';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { z } from 'zod';
 import { CliError } from './errors.js';
-import { logDebug } from './output/render.js';
 
 export const LocalPaths = z.object({
   stateDir: z.string(),
   stateFile: z.string(),
+  seedFile: z.string(),
+  /** Full merged Helm values (packaged local.defaults + generated overlay) for `helm upgrade -f`. */
   generatedValuesFile: z.string(),
   configMapManifestFile: z.string(),
   secretManifestFile: z.string(),
@@ -38,6 +39,7 @@ export async function getLocalPaths(stateDir?: string): Promise<LocalPaths> {
   return LocalPaths.parse({
     stateDir: base,
     stateFile: path.join(base, 'state.json'),
+    seedFile: path.join(base, 'seed'),
     generatedValuesFile: path.join(base, 'generated.values.yaml'),
     configMapManifestFile: path.join(base, 'configmap.yaml'),
     secretManifestFile: path.join(base, 'secret.yaml'),
@@ -60,15 +62,20 @@ export async function ensureStateDir(paths: LocalPaths): Promise<void> {
       cause: err,
     });
   }
-  logDebug(`stateDir=${paths.stateDir}`);
 }
 
 export async function writeFile0600(filePath: string, contents: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, contents, { encoding: 'utf8' });
   try {
     chmodSync(filePath, 0o600);
   } catch {
     // ignore
   }
+}
+
+/** Ensure parent directory exists for a file path (e.g. before writing state.json). */
+export async function ensureDir(filePath: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
 

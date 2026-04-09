@@ -41,3 +41,8 @@ export const SECRET_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'NANGO_REDIS_URL', classification: 'derive_from_local_infra' }
 ];
 
+/** Map for quick lookup (used by secret materialization). */
+export const SECRET_CLASSIFICATION = Object.fromEntries(
+  SECRET_KEY_CLASSIFICATIONS.map((k) => [k.key, k.classification])
+) as Record<string, Classification>;
+

@@ -1,79 +1,83 @@
 import { Command } from 'commander';
 import { z } from 'zod';
+
+import { createCmd } from '../../core/command.js';
+import { getDefaultProfile, type Profile } from '../../core/profile.js';
 import { Helm } from '../../core/helm.js';
 import { Kubectl } from '../../core/kubectl.js';
 import { confirm } from '../../core/prompt.js';
-import { getDefaultContext, getDefaultStateDir, getDefaultNamespace, getDefaultRelease } from '../../core/defaults.js';
-import { renderError, renderJson } from '../../core/output/render.js';
+import { renderJson } from '../../core/output/render.js';
 
 const schema = z.object({
+  json: z.boolean().default(false),
+  verbose: z.boolean().default(false),
   context: z.string().optional(),
-  namespace: z.string().optional(),
-  release: z.string().optional(),
-  yes: z.boolean().optional(),
-  deleteNamespace: z.boolean().optional(),
-  deletePvcs: z.boolean().optional(),
-  purgeState: z.boolean().optional(),
-  stateDir: z.string().optional()
+  namespace: z.string().min(1).default(getDefaultProfile().namespace),
+  release: z.string().min(1).default(getDefaultProfile().release),
+  yes: z.boolean().default(false),
+  deleteNamespace: z.boolean().default(false),
+  deletePvcs: z.boolean().default(false),
+  purgeState: z.boolean().default(false),
 });
 
 export function buildLocalUninstallCommand(): Command {
-  const cmd = new Command('uninstall')
+  const uninstall = new Command('uninstall')
     .description('Uninstall local Nango release safely')
-    .option('--context <kubecontext>', 'Kube context (advanced)', getDefaultContext())
-    .option('--namespace <ns>', 'Namespace', getDefaultNamespace())
-    .option('--release <name>', 'Helm release name', getDefaultRelease())
-    .option('--state-dir <path>', 'State directory (advanced)', getDefaultStateDir())
+    .option('--namespace <ns>', 'Namespace', getDefaultProfile().namespace)
+    .option('--release <name>', 'Helm release name', getDefaultProfile().release)
+    .option('--context <kubecontext>', 'Kubernetes context')
     .option('--yes', 'Skip confirmation prompts', false)
     .option('--delete-namespace', 'Delete namespace after uninstall', false)
     .option('--delete-pvcs', 'Delete PVCs in namespace (destructive)', false)
     .option('--purge-state', 'Delete local state dir (destructive)', false)
-    .option('--json', 'Machine-readable output', false)
-    .action(async (opts) => {
-      const parsed = schema.safeParse(opts);
-      if (!parsed.success) {
-        renderError(parsed.error);
-        process.exitCode = 2;
-        return;
-      }
+    .action(
+      createCmd(schema, async (opts, ctx) => {
+        const profile: Profile = {
+          ...getDefaultProfile(),
+          namespace: opts.namespace,
+          release: opts.release,
+          kubeContext: opts.context,
+        };
 
-      const { context, namespace, release, yes, deleteNamespace, deletePvcs, purgeState, stateDir } = parsed.data;
-
-      const destructive = Boolean(deleteNamespace || deletePvcs || purgeState);
-      if (!yes) {
-        const ok = await confirm(
-          destructive
-            ? `This will uninstall '${release}' and perform destructive cleanup. Continue?`
-            : `This will uninstall '${release}' from namespace '${namespace}'. Continue?`
-        );
-        if (!ok) {
-          if (opts.json) {
-            renderJson({ ok: true, cancelled: true });
+        const destructive = Boolean(opts.deleteNamespace || opts.deletePvcs || opts.purgeState);
+        if (!opts.yes) {
+          const ok = await confirm(
+            destructive
+              ? `This will uninstall '${profile.release}' and perform destructive cleanup. Continue?`
+              : `This will uninstall '${profile.release}' from namespace '${profile.namespace}'. Continue?`
+          );
+          if (!ok) {
+            if (opts.json) renderJson({ ok: true, cancelled: true });
+            return;
           }
-          return;
         }
-      }
 
-      const helm = new Helm({ context, namespace });
-      const kubectl = new Kubectl({ context, namespace });
+        const helm = new Helm(ctx.proc, { kubeContext: profile.kubeContext });
+        const kubectl = new Kubectl(ctx.proc, { kubeContext: profile.kubeContext });
 
-      await helm.uninstall({ release });
+        await helm.uninstall({ ref: { namespace: profile.namespace, release: profile.release } });
 
-      if (deletePvcs) {
-        await kubectl.deleteAllPvcs();
-      }
-      if (deleteNamespace) {
-        await kubectl.deleteNamespace(namespace);
-      }
-      if (purgeState && stateDir) {
-        await kubectl.deleteLocalPath(stateDir);
-      }
+        if (opts.deletePvcs) {
+          await kubectl.run(['delete', 'pvc', '--all'], { namespace: profile.namespace, allowNonZeroExit: true });
+        }
+        if (opts.deleteNamespace) {
+          await kubectl.run(['delete', 'namespace', profile.namespace], { skipNamespace: true, allowNonZeroExit: true });
+        }
 
-      if (opts.json) {
-        renderJson({ ok: true, release, namespace, deleted: { deletePvcs, deleteNamespace, purgeState } });
-      }
-    });
+        if (opts.json) {
+          renderJson({
+            ok: true,
+            release: profile.release,
+            namespace: profile.namespace,
+            deleted: { deletePvcs: opts.deletePvcs, deleteNamespace: opts.deleteNamespace, purgeState: opts.purgeState },
+            note: opts.purgeState ? 'purge-state not implemented yet in scaffold' : undefined,
+          });
+        } else {
+          ctx.out.writeLine('Uninstall complete.');
+        }
+      })
+    );
 
-  return cmd;
+  return uninstall;
 }
 

@@ -1,0 +1,94 @@
+## Local defaults for `nangoctl local install`
+##
+## This file is intentionally minimal and stable. The CLI also generates
+## a second overlay with environment-specific values (ports, URLs, secret refs).
+##
+## Canonical chart: https://github.com/NangoHQ/nango-helm-charts/tree/main/charts/nango
+
+# Local runtime should be isolated to a namespace; chart default is already `nango`.
+namespaceOverride: nango
+
+# Use in-cluster dependencies by default for local.
+postgresql:
+  enabled: true
+redis:
+  enabled: true
+elasticsearch:
+  enabled: false
+
+# Prefer in-cluster access; `nangoctl` will port-forward the server service.
+server:
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+persist:
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+orchestrator:
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+jobs:
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+runner:
+  enabled: true
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+# Optional service; keep off by default in local.
+metering:
+  enabled: false
+

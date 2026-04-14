@@ -17,7 +17,7 @@ export type KeyClass = {
 // MVP: keep it small; evolve as we discover real required keys.
 export const CONFIG_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'NODE_ENV', classification: 'override_in_local', notes: 'development' },
-    { key: 'SERVER_RUN_MODE', classification: 'override_in_local', notes: 'KUBERNETES_LOCAL' },
+    { key: 'SERVER_RUN_MODE', classification: 'override_in_local', notes: 'DOCKERIZED (matches Nango parseEnvs)' },
     { key: 'NANGO_SERVER_URL', classification: 'override_in_local', notes: 'http://localhost:<port>' },
     { key: 'NANGO_PUBLIC_SERVER_URL', classification: 'override_in_local', notes: 'http://localhost:<port>' },
     { key: 'NANGO_PUBLIC_CONNECT_URL', classification: 'override_in_local', notes: 'http://localhost:<port>/connect' },
@@ -26,7 +26,10 @@ export const CONFIG_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'RECORDS_DATABASE_SSL', classification: 'disable_in_local', notes: 'false' },
     { key: 'DD_TRACING_ENABLED', classification: 'disable_in_local', notes: 'false' },
     { key: 'DD_TRACE_ENABLED', classification: 'disable_in_local', notes: 'false' },
-    { key: 'NANGO_LOGS_ENABLED', classification: 'disable_in_local', notes: 'false' }
+    { key: 'DD_ENV', classification: 'override_in_local', notes: 'local' },
+    { key: 'NANGO_LOGS_ENABLED', classification: 'disable_in_local', notes: 'false unless ES subchart enabled' },
+    { key: 'NANGO_LOGS_ES_URL', classification: 'derive_from_local_infra', notes: 'in-cluster elasticsearch' },
+    { key: 'NANGO_PUBSUB_TRANSPORT', classification: 'override_in_local', notes: 'none' }
 ];
 
 export const SECRET_KEY_CLASSIFICATIONS: KeyClass[] = [

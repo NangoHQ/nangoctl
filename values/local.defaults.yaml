@@ -8,16 +8,61 @@
 # Local runtime should be isolated to a namespace; chart default is already `nango`.
 namespaceOverride: nango
 
+# Bitnami subcharts verify images; `bitnamilegacy/*` requires opting in (see bitnami/charts#30850).
+global:
+  security:
+    allowInsecureImages: true
+
 # Use in-cluster dependencies by default for local.
+# Bitnami defaults: Postgres/Redis use random passwords unless `auth` is set; connection URLs in
+# `nango-local-secrets` must match these values.
+#
+# Use the `postgres` superuser only (do not set `auth.username` / `auth.password` for a custom user):
+# otherwise the chart expects a `password` key in `nango-postgresql`, and upgrades from older releases
+# whose secret only has `postgres-password` fail with PASSWORDS ERROR.
 postgresql:
   enabled: true
+  # If you change `postgresPassword` after the DB already ran, the PVC keeps the old password; use
+  # `nangoctl local install --recreate-postgres-data` once to wipe and reinit (destructive).
+  auth:
+    postgresPassword: nango
+    database: nango
+  readReplicas:
+    replicaCount: 0
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
 redis:
   enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    password: nango
+  image:
+    repository: bitnamilegacy/redis
+    tag: 8.2.1-debian-12-r0
 elasticsearch:
-  enabled: false
+  enabled: true
+  # Bitnami charts pin `bitnami/os-shell` for sysctl init; many tags were removed from Docker Hub.
+  # kind nodes usually already allow enough mmap; disable to avoid a dead init pull.
+  sysctlImage:
+    enabled: false
+  # Default chart is 2×(master,data,coordinating,ingest) — too heavy for typical kind clusters.
+  master:
+    replicaCount: 1
+  data:
+    replicaCount: 1
+  coordinating:
+    replicaCount: 1
+  ingest:
+    replicaCount: 1
+  image:
+    repository: bitnamilegacy/elasticsearch
+    tag: 9.1.2-debian-12-r0
 
 # Prefer in-cluster access; `nangoctl` will port-forward the server service.
 server:
+  replicaCount: 1
   ingress:
     enabled: false
   service:
@@ -32,6 +77,7 @@ server:
     - nango-local-secrets
 
 persist:
+  replicaCount: 1
   ingress:
     enabled: false
   service:
@@ -46,6 +92,7 @@ persist:
     - nango-local-secrets
 
 orchestrator:
+  replicaCount: 1
   ingress:
     enabled: false
   service:
@@ -60,6 +107,7 @@ orchestrator:
     - nango-local-secrets
 
 jobs:
+  replicaCount: 1
   ingress:
     enabled: false
   service:
@@ -75,6 +123,7 @@ jobs:
 
 runner:
   enabled: true
+  replicaCount: 1
   ingress:
     enabled: false
   service:

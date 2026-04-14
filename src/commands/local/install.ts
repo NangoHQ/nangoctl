@@ -37,6 +37,7 @@ const InstallFlagsSchema = z.object({
   lowResource: z.boolean(),
   stateDir: z.string().optional(),
   rotateSecrets: z.boolean(),
+  recreatePostgresData: z.boolean(),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -59,6 +60,11 @@ export function buildLocalInstallCommand(): Command {
     .option('--wait-timeout <dur>', 'Wait timeout (e.g. 10m)', '10m')
     .option('--low-resource', 'Use low-resource defaults', false)
     .option('--rotate-secrets', 'Regenerate local secrets (destructive)', false)
+    .option(
+      '--recreate-postgres-data',
+      'Scale down Postgres, delete its PVC and chart secret, then reinstall (fixes "password authentication failed for postgres" when the DB volume predates postgresPassword in values; wipes Postgres data)',
+      false
+    )
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Verbose output', false)
     .action(async (opts) => {
@@ -82,6 +88,7 @@ export function buildLocalInstallCommand(): Command {
         lowResource: opts.lowResource,
         stateDir: opts.stateDir,
         rotateSecrets: Boolean(opts.rotateSecrets),
+        recreatePostgresData: Boolean(opts.recreatePostgresData),
       });
 
       if (!parsed.success) {
@@ -151,6 +158,30 @@ export function buildLocalInstallCommand(): Command {
 
       await kubectl.ensureNamespace(ctx.namespace, { kubeContext });
 
+      if (ctx.recreatePostgresData) {
+        const sts = `${ctx.release}-postgresql`;
+        const pvc = `data-${sts}-0`;
+        const pgSecret = `${ctx.release}-postgresql`;
+        process.stderr.write(
+          `[nangoctl] Recreating PostgreSQL data (${sts}): scale down → delete PVC ${pvc} → delete secret ${pgSecret}\n`
+        );
+        await kubectl.run(['scale', `statefulset/${sts}`, '--replicas=0'], {
+          kubeContext,
+          namespace: ctx.namespace,
+          allowNonZeroExit: true,
+        });
+        await kubectl.run(['wait', '--for=delete', `pod/${sts}-0`, '--timeout=120s'], {
+          kubeContext,
+          namespace: ctx.namespace,
+          allowNonZeroExit: true,
+        });
+        await kubectl.run(['delete', 'pvc', pvc, '--ignore-not-found'], { kubeContext, namespace: ctx.namespace });
+        await kubectl.run(['delete', 'secret', pgSecret, '--ignore-not-found'], {
+          kubeContext,
+          namespace: ctx.namespace,
+        });
+      }
+
       const combinedApply = `${materialized.configMapYaml}\n---\n${materialized.secretYaml}\n`;
       await kubectl.applyYaml(combinedApply, { kubeContext, namespace: ctx.namespace });
 
@@ -195,6 +226,7 @@ export function buildLocalInstallCommand(): Command {
         serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
         portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${ctx.release}-nango-server-svc ${ctx.serverPort}:80`,
         stateDir: paths.stateDir,
+        recreatePostgresData: ctx.recreatePostgresData,
         generated: {
           configMap: paths.configMapManifestFile,
           secret: paths.secretManifestFile,
@@ -207,16 +239,20 @@ export function buildLocalInstallCommand(): Command {
         return;
       }
 
+      const body = [
+        `Namespace: ${ctx.namespace}`,
+        `Release: ${ctx.release}`,
+        `Kube context: ${kubeContext}`,
+        `Open (after port-forward): ${out.serverUrl}`,
+        `Port-forward: ${out.portForwardHint}`,
+        `State: ${paths.stateDir}`,
+      ];
+      if (ctx.recreatePostgresData) {
+        body.push('PostgreSQL data volume was deleted and reinitialized on this run.');
+      }
       renderHuman({
         title: 'Local Nango install complete',
-        body: [
-          `Namespace: ${ctx.namespace}`,
-          `Release: ${ctx.release}`,
-          `Kube context: ${kubeContext}`,
-          `Open (after port-forward): ${out.serverUrl}`,
-          `Port-forward: ${out.portForwardHint}`,
-          `State: ${paths.stateDir}`,
-        ],
+        body,
       });
     });
 

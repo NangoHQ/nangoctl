@@ -1,0 +1,29 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  elasticsearchHttpUrl,
+  helmCommonFullname,
+  nangoComponentServiceUrl,
+} from '../../src/core/helm/names.js';
+
+describe('helm naming helpers', () => {
+  it('matches chart fullname when release contains chart name', () => {
+    expect(helmCommonFullname('nango')).toBe('nango');
+  });
+
+  it('prefixes chart name when release does not contain it', () => {
+    expect(helmCommonFullname('acme', 'nango')).toBe('acme-nango');
+  });
+
+  it('builds component service URLs with -svc suffix', () => {
+    expect(nangoComponentServiceUrl('nango', 'server', 'nango')).toBe(
+      'http://nango-server-svc.nango.svc.cluster.local'
+    );
+  });
+
+  it('builds elasticsearch URL from Helm release name', () => {
+    expect(elasticsearchHttpUrl('nango', 'nango')).toBe(
+      'http://nango-elasticsearch.nango.svc.cluster.local:9200'
+    );
+  });
+});

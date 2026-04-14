@@ -5,6 +5,8 @@ import YAML from 'yaml';
 import { generateLocalConfigMap } from '../config/generateConfigMap.js';
 import type { LocalRuntimeConfig } from '../config/localConfigSchema.js';
 import { generateLocalSecrets, renderKubernetesSecret } from '../config/generateSecret.js';
+import { elasticsearchHttpUrl, helmCommonFullname, nangoComponentServiceUrl } from '../helm/names.js';
+import { localPostgresUrl, localRedisUrl } from './bitnamiLocalDeps.js';
 import { mergeValues } from '../values/mergeValues.js';
 import { generateLocalHelmValues } from '../values/generateLocalValues.js';
 import { LOCAL_CONFIGMAP_NAME, LOCAL_SECRET_NAME } from '../state.js';
@@ -50,18 +52,22 @@ function manifestToYaml(manifest: Record<string, unknown>): string {
 }
 
 function buildInClusterUrls(namespace: string, release: string) {
-  const rel = release.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
-  const base = `${rel}-nango`;
+  const full = helmCommonFullname(release);
   return {
-    server: `http://${base}-server.${namespace}.svc.cluster.local`,
-    persist: `http://${base}-persist.${namespace}.svc.cluster.local`,
-    orchestrator: `http://${base}-orchestrator.${namespace}.svc.cluster.local`,
-    jobs: `http://${base}-jobs.${namespace}.svc.cluster.local`,
-    runner: `http://${base}-runner.${namespace}.svc.cluster.local`,
+    server: nangoComponentServiceUrl(full, 'server', namespace),
+    persist: nangoComponentServiceUrl(full, 'persist', namespace),
+    orchestrator: nangoComponentServiceUrl(full, 'orchestrator', namespace),
+    jobs: nangoComponentServiceUrl(full, 'jobs', namespace),
+    runner: nangoComponentServiceUrl(full, 'runner', namespace),
   };
 }
 
 export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInput): Promise<MaterializeLocalRuntimeResult> {
+  const packagedDefaults = await loadPackagedLocalDefaultsYaml();
+  const baseValues = YAML.parse(packagedDefaults) as Record<string, unknown>;
+  const esCfg = baseValues.elasticsearch as Record<string, unknown> | undefined;
+  const elasticsearchEnabled = Boolean(esCfg?.enabled);
+
   const publicBaseUrl = `http://127.0.0.1:${input.serverPortLocalhost}`;
   const inClusterUrls = buildInClusterUrls(input.namespace, input.release);
 
@@ -77,7 +83,9 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     authAllowSignup: true,
     publicBaseUrl,
     inClusterUrls,
-    runnerNodeId: generated.runnerNodeId,
+    elasticsearchUrl: elasticsearchEnabled ? elasticsearchHttpUrl(input.release, input.namespace) : undefined,
+    logsEnabled: elasticsearchEnabled,
+    logsIndexPrefix: 'nango-local',
     enterpriseMode: true,
   };
 
@@ -87,9 +95,8 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     config: runtimeConfig,
   });
 
-  const postgresUrl =
-    `postgres://nango:nango@nango-postgresql.${input.namespace}.svc.cluster.local:5432/nango`;
-  const redisUrl = `redis://nango-redis-master.${input.namespace}.svc.cluster.local:6379`;
+  const postgresUrl = localPostgresUrl(input.namespace);
+  const redisUrl = localRedisUrl(input.namespace);
 
   const secretYaml = renderKubernetesSecret({
     name: LOCAL_SECRET_NAME,
@@ -100,9 +107,6 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
   });
 
   const configMapYaml = manifestToYaml(cm as unknown as Record<string, unknown>);
-
-  const packagedDefaults = await loadPackagedLocalDefaultsYaml();
-  const baseValues = YAML.parse(packagedDefaults) as Record<string, unknown>;
 
   const { yamlText: generatedOverlayYaml, values: generatedOverlay } = generateLocalHelmValues(
     {

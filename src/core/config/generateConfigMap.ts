@@ -7,6 +7,12 @@ export type ConfigMapManifest = {
   data: Record<string, string>;
 };
 
+const HTTP_AGENT_CONFIG = `{
+  "keepAlive": true,
+  "timeout": 120000,
+  "scheduling": "fifo"
+}`;
+
 export function generateLocalConfigMap(opts: {
   name: string;
   namespace: string;
@@ -16,16 +22,19 @@ export function generateLocalConfigMap(opts: {
 
   const data: Record<string, string> = {
     NODE_ENV: config.nodeEnv,
-    SERVER_RUN_MODE: 'KUBERNETES_LOCAL',
+    NANGO_ENTERPRISE: String(config.enterpriseMode ?? true),
+    // Must match `SERVER_RUN_MODE` in Nango `parseEnvs` (e.g. DOCKERIZED for container images).
+    SERVER_RUN_MODE: 'DOCKERIZED',
     SERVER_PORT: String(config.serverPortInPod),
+    HTTP_AGENT_CONFIG,
     AUTH_ALLOW_SIGNUP: String(config.authAllowSignup),
 
-    // Public-facing URLs (local)
+    // Public-facing URLs (local port-forward / localhost)
     NANGO_SERVER_URL: config.publicBaseUrl,
     NANGO_PUBLIC_SERVER_URL: config.publicBaseUrl,
     NANGO_PUBLIC_CONNECT_URL: `${config.publicBaseUrl}/connect`,
 
-    // In-cluster URLs (service discovery via Kubernetes DNS)
+    // In-cluster URLs (Helm `*-svc` service names)
     SERVER_SERVICE_URL: config.inClusterUrls.server,
     PERSIST_SERVICE_URL: config.inClusterUrls.persist,
     ORCHESTRATOR_SERVICE_URL: config.inClusterUrls.orchestrator,
@@ -33,23 +42,35 @@ export function generateLocalConfigMap(opts: {
     RUNNER_SERVICE_URL: config.inClusterUrls.runner,
     RUNNER_URL: config.inClusterUrls.runner,
 
-    RUNNER_TYPE: 'kubernetes',
-    RUNNER_NODE_ID: config.runnerNodeId,
+    RUNNER_TYPE: 'KUBERNETES',
 
-    // Local posture: disable prod-only telemetry/integrations by default.
+    // No AWS ActiveMQ in local; use app default (`none`) for pub/sub.
+    NANGO_PUBSUB_TRANSPORT: 'none',
+
+    // SSL toggles: local DB is in-cluster non-TLS by default.
+    ORCHESTRATOR_DB_SSL: 'false',
+    NANGO_DB_SSL: 'false',
+    RECORDS_DATABASE_SSL: 'false',
+
+    // Datadog off for local; tag env if you enable the agent later.
+    DD_ENV: 'local',
     DD_TRACE_ENABLED: 'false',
     DD_TRACING_ENABLED: 'false',
     DD_PROFILING_ENABLED: 'false',
 
-    NANGO_LOGS_ENABLED: 'false'
+    NANGO_SLACK_INTEGRATION_KEY: 'slack-notifications',
+    PUBLIC_AUTHENTICATION_DEPRECATION_DATE: '9999-12-31',
   };
 
-  // SSL toggles: local DB is in-cluster non-TLS by default.
-  data.ORCHESTRATOR_DB_SSL = 'false';
-  data.NANGO_DB_SSL = 'false';
-  data.RECORDS_DATABASE_SSL = 'false';
-
-  if (config.enterpriseMode !== undefined) data.NANGO_ENTERPRISE = String(config.enterpriseMode);
+  data.NANGO_LOGS_ENABLED = String(config.logsEnabled);
+  if (config.logsEnabled && config.elasticsearchUrl) {
+    data.NANGO_LOGS_ES_URL = config.elasticsearchUrl;
+    data.NANGO_LOGS_ES_PREFIX = config.logsIndexPrefix;
+    data.NANGO_LOGS_ES_INDEX_OPERATIONS = `${config.logsIndexPrefix}-operations`;
+    data.NANGO_LOGS_ES_INDEX_MESSAGES = `${config.logsIndexPrefix}-messages`;
+    data.NANGO_LOGS_ES_USER = '';
+    data.NANGO_LOGS_ES_PWD = '';
+  }
 
   return {
     apiVersion: 'v1',
@@ -62,4 +83,3 @@ export function generateLocalConfigMap(opts: {
     data
   };
 }
-

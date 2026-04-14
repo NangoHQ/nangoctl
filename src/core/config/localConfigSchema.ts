@@ -31,7 +31,11 @@ export const LocalRuntimeConfigSchema = z.object({
     jobs: z.string(),
     runner: z.string(),
   }),
-  runnerNodeId: z.string(),
+  /** In-cluster Elasticsearch URL; set when `logsEnabled` and bitnami ES is deployed. */
+  elasticsearchUrl: z.string().optional(),
+  logsEnabled: z.boolean(),
+  /** Prefix for ES index names, e.g. `nango-local` → `nango-local-operations`. */
+  logsIndexPrefix: z.string(),
   enterpriseMode: z.boolean().optional(),
 });
 

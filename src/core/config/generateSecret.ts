@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
+import { localPostgresUrl, localRedisUrl } from '../local/bitnamiLocalDeps.js';
 import { SECRET_CLASSIFICATION } from './classifyKeys.js';
 
 export const GeneratedSecretSchema = z.object({
@@ -7,8 +8,7 @@ export const GeneratedSecretSchema = z.object({
     internalApiKey: z.string(),
     adminKey: z.string(),
     adminUuid: z.string(),
-    adminInviteToken: z.string(),
-    runnerNodeId: z.string()
+    adminInviteToken: z.string()
 });
 export type GeneratedSecret = z.infer<typeof GeneratedSecretSchema>;
 
@@ -22,8 +22,7 @@ export function generateSecrets(seed?: Partial<GeneratedSecret>): GeneratedSecre
         internalApiKey: seed?.internalApiKey ?? randomToken(24),
         adminKey: seed?.adminKey ?? randomToken(24),
         adminUuid: seed?.adminUuid ?? crypto.randomUUID(),
-        adminInviteToken: seed?.adminInviteToken ?? randomToken(18),
-        runnerNodeId: seed?.runnerNodeId ?? crypto.randomUUID()
+        adminInviteToken: seed?.adminInviteToken ?? randomToken(18)
     };
     return GeneratedSecretSchema.parse(next);
 }
@@ -35,10 +34,14 @@ function deterministicToken(seed: string, label: string, bytes: number): string 
     return digest.subarray(0, bytes).toString('base64url');
 }
 
-function deterministicUuid(seed: string, label: string): string {
-    const digest = crypto.createHash('sha256').update(`${seed}:uuid:${label}`).digest('hex');
-    // UUIDv4-ish formatting (not setting version bits strictly; fine for local stable IDs)
-    return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20, 32)}`;
+/** Deterministic RFC 4122 UUID v4 from seed (required by `z.string().uuid()` in Nango env parsing). */
+function deterministicUuidV4(seed: string, label: string): string {
+    const digest = crypto.createHash('sha256').update(`${seed}:uuid:${label}`).digest();
+    const bytes = Buffer.from(digest.subarray(0, 16));
+    bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    const h = bytes.toString('hex');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
 export type LocalSecretsResult = {
@@ -65,15 +68,12 @@ export function generateLocalSecrets(params: {
         encryptionKey: deterministicToken(params.seed, 'NANGO_ENCRYPTION_KEY', 32),
         internalApiKey: deterministicToken(params.seed, 'NANGO_INTERNAL_API_KEY', 24),
         adminKey: deterministicToken(params.seed, 'NANGO_ADMIN_KEY', 24),
-        adminUuid: deterministicUuid(params.seed, 'NANGO_ADMIN_UUID'),
-        adminInviteToken: deterministicToken(params.seed, 'NANGO_ADMIN_INVITE_TOKEN', 18),
-        runnerNodeId: deterministicUuid(params.seed, 'RUNNER_NODE_ID')
+        adminUuid: deterministicUuidV4(params.seed, 'NANGO_ADMIN_UUID'),
+        adminInviteToken: deterministicToken(params.seed, 'NANGO_ADMIN_INVITE_TOKEN', 18)
     });
 
-    const postgresUrl =
-        params.postgresUrl ??
-        `postgres://nango:nango@nango-postgresql.${params.namespace}.svc.cluster.local:5432/nango`;
-    const redisUrl = params.redisUrl ?? `redis://nango-redis-master.${params.namespace}.svc.cluster.local:6379`;
+    const postgresUrl = params.postgresUrl ?? localPostgresUrl(params.namespace);
+    const redisUrl = params.redisUrl ?? localRedisUrl(params.namespace);
 
     const data: Record<string, string> = {
         NANGO_ENCRYPTION_KEY: generated.encryptionKey,
@@ -81,7 +81,7 @@ export function generateLocalSecrets(params: {
         NANGO_ADMIN_KEY: generated.adminKey,
         NANGO_ADMIN_UUID: generated.adminUuid,
         NANGO_ADMIN_INVITE_TOKEN: generated.adminInviteToken,
-        RUNNER_NODE_ID: generated.runnerNodeId,
+        RUNNER_NODE_ID: '1',
 
         NANGO_DATABASE_URL: postgresUrl,
         ORCHESTRATOR_DATABASE_URL: postgresUrl,
@@ -119,7 +119,7 @@ export function renderKubernetesSecret(params: {
         NANGO_ADMIN_KEY: params.secrets.adminKey,
         NANGO_ADMIN_UUID: params.secrets.adminUuid,
         NANGO_ADMIN_INVITE_TOKEN: params.secrets.adminInviteToken,
-        RUNNER_NODE_ID: params.secrets.runnerNodeId,
+        RUNNER_NODE_ID: '1',
 
         // Derived from local infra:
         NANGO_DATABASE_URL: params.postgresUrl,

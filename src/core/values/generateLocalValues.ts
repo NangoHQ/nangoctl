@@ -56,7 +56,7 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
 
     postgresql: { enabled: true },
     redis: { enabled: true },
-    elasticsearch: { enabled: false },
+    elasticsearch: { enabled: true },
     metering: { enabled: false },
   };
 

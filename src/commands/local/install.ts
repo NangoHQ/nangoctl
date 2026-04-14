@@ -17,6 +17,7 @@ import { Helm } from '../../core/helm.js';
 import { kindEnsureCluster } from '../../core/kind.js';
 import { materializeLocalRuntime, defaultKubeContextForKind } from '../../core/local/materialize.js';
 import { mergeValues } from '../../core/values/mergeValues.js';
+import { nangoServerServiceName } from '../../core/helm/names.js';
 
 const InstallFlagsSchema = z.object({
   json: z.boolean(),
@@ -224,7 +225,7 @@ export function buildLocalInstallCommand(): Command {
         chart: ctx.chart,
         chartVersion: ctx.chartVersion ?? null,
         serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
-        portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${ctx.release}-nango-server-svc ${ctx.serverPort}:80`,
+        portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
         stateDir: paths.stateDir,
         recreatePostgresData: ctx.recreatePostgresData,
         generated: {

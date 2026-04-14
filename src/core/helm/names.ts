@@ -1,3 +1,8 @@
+/** Kubernetes Service name for the Nango server (`*.names.service` → `{fullname}-server-svc`). */
+export function nangoServerServiceName(releaseName: string): string {
+  return `${helmCommonFullname(releaseName)}-server-svc`;
+}
+
 /**
  * Mirrors `common.names.fullname` from Nango Helm charts (bitnami common templates).
  * When the sanitized release name contains the chart name, the fullname is the release name only.

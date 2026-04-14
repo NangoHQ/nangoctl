@@ -4,9 +4,15 @@ import {
   elasticsearchHttpUrl,
   helmCommonFullname,
   nangoComponentServiceUrl,
+  nangoServerServiceName,
 } from '../../src/core/helm/names.js';
 
 describe('helm naming helpers', () => {
+  it('derives server Service name from release (chart fullname + -server-svc)', () => {
+    expect(nangoServerServiceName('nango')).toBe('nango-server-svc');
+    expect(nangoServerServiceName('acme')).toBe('acme-nango-server-svc');
+  });
+
   it('matches chart fullname when release contains chart name', () => {
     expect(helmCommonFullname('nango')).toBe('nango');
   });

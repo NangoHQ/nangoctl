@@ -45,6 +45,7 @@ Override with:
 
 ```bash
 nangoctl local install --server-port 4280 --connect-ui-port 4281
+nangoctl local install --with-image-tag 1.2.3   # sets Helm global.image.tag (all Nango images)
 ```
 
 State (cluster name, namespace, ports, etc.) is stored under your user config directory (on macOS: `~/Library/Application Support/nangoctl/local`).

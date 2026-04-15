@@ -47,6 +47,8 @@ const InstallFlagsSchema = z.object({
   stateDir: z.string().optional(),
   rotateSecrets: z.boolean(),
   recreatePostgresData: z.boolean(),
+  /** Nango container image tag (Helm `global.image.tag`). */
+  withImageTag: z.string().min(1).optional(),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -79,6 +81,11 @@ export function buildLocalInstallCommand(): Command {
       'Scale down Postgres, delete its PVC and chart secret, then reinstall (fixes "password authentication failed for postgres" when the DB volume predates postgresPassword in values; wipes Postgres data)',
       false
     )
+    .option(
+      '--with-image-tag <tag>',
+      'Nango image tag for all chart images (sets Helm global.image.tag; no `--set` required)',
+      undefined
+    )
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
     .action(async (opts) => {
@@ -104,6 +111,7 @@ export function buildLocalInstallCommand(): Command {
         stateDir: opts.stateDir,
         rotateSecrets: Boolean(opts.rotateSecrets),
         recreatePostgresData: Boolean(opts.recreatePostgresData),
+        withImageTag: opts.withImageTag,
       });
 
       if (!parsed.success) {
@@ -173,6 +181,7 @@ export function buildLocalInstallCommand(): Command {
           connectUiPortLocalhost: ctx.connectUiPort,
           seed,
           lowResource: ctx.lowResource,
+          imageTag: ctx.withImageTag,
         });
 
         await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
@@ -288,6 +297,7 @@ export function buildLocalInstallCommand(): Command {
           kubeContext,
           chart: ctx.chart,
           chartVersion: ctx.chartVersion ?? null,
+          imageTag: ctx.withImageTag ?? null,
           serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
           connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
           portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
@@ -312,6 +322,7 @@ export function buildLocalInstallCommand(): Command {
           `Namespace: ${ctx.namespace}`,
           `Release: ${ctx.release}`,
           `Kube context: ${kubeContext}`,
+          ...(ctx.withImageTag ? [`Image tag: ${ctx.withImageTag}`] : []),
           `Server (after port-forward): ${out.serverUrl}`,
           `Connect UI (after port-forward): ${out.connectUiUrl}`,
           `Port-forward (server): ${out.portForwardHint}`,

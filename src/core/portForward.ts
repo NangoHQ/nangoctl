@@ -4,6 +4,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { execa, type Subprocess } from 'execa';
 
 import { PreflightError } from './errors.js';
+import { PREREQ_BOOTSTRAP_HINT } from './preflight.js';
 
 export type PortForwardSpec = {
   namespace: string;
@@ -75,7 +76,11 @@ export async function runForegroundPortForwardMulti(spec: PortForwardMultiSpec):
       process.removeListener('SIGINT', shutdown);
       process.removeListener('SIGTERM', shutdown);
       reject(
-        new PreflightError(`Failed to start kubectl: ${err.message}`, ['Install kubectl and ensure it is on PATH.'], err)
+        new PreflightError(
+          `Failed to start kubectl: ${err.message}`,
+          ['Install kubectl and ensure it is on PATH.', PREREQ_BOOTSTRAP_HINT],
+          err
+        )
       );
     });
   });
@@ -136,7 +141,11 @@ export async function startDetachedPortForwardMulti(spec: PortForwardMultiSpec):
       settled = true;
       clearTimeout(timer);
       reject(
-        new PreflightError(`Failed to start kubectl: ${err.message}`, ['Install kubectl and ensure it is on PATH.'], err)
+        new PreflightError(
+          `Failed to start kubectl: ${err.message}`,
+          ['Install kubectl and ensure it is on PATH.', PREREQ_BOOTSTRAP_HINT],
+          err
+        )
       );
     });
   });

@@ -76,6 +76,7 @@ nangoctl local close
 ### 3. Day-to-day commands
 
 ```bash
+nangoctl local bootstrap              # install Docker / kubectl / Helm / kind where supported
 nangoctl local status
 nangoctl local logs --service server
 nangoctl local credentials          # dashboard basic-auth (from local configmap.yaml)

@@ -1,5 +1,6 @@
 import type { ProcRunner } from './proc.js';
 import { PreflightError } from './errors.js';
+import { PREREQ_BOOTSTRAP_HINT } from './preflight.js';
 
 export class Kubectl {
   constructor(
@@ -15,6 +16,7 @@ export class Kubectl {
     if (res.exitCode !== 0) {
       throw new PreflightError('Missing prerequisite: kubectl', [
         'Install kubectl: https://kubernetes.io/docs/tasks/tools/',
+        PREREQ_BOOTSTRAP_HINT,
       ]);
     }
   }

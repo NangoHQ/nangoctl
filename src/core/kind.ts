@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { PreflightError } from './errors.js';
+import { PREREQ_BOOTSTRAP_HINT } from './preflight.js';
 
 export type KindLogger = {
   debug: (msg: string) => void;
@@ -40,6 +41,7 @@ export async function kindEnsureCluster({
   if (!(await kindIsInstalled())) {
     throw new PreflightError('Missing required dependency: kind', [
       'Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation',
+      PREREQ_BOOTSTRAP_HINT,
     ]);
   }
 

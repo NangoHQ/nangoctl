@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { buildLocalBootstrapCommand } from './bootstrap.js';
 import { buildLocalInstallCommand } from './install.js';
 import { buildLocalStatusCommand } from './status.js';
 import { buildLocalLogsCommand } from './logs.js';
@@ -11,6 +12,7 @@ import { buildLocalConfigCommand } from './config.js';
 export function makeLocalCommand(): Command {
   return new Command('local')
     .description('Run Nango locally (Kubernetes-first)')
+    .addCommand(buildLocalBootstrapCommand())
     .addCommand(buildLocalInstallCommand())
     .addCommand(buildLocalStatusCommand())
     .addCommand(buildLocalLogsCommand())

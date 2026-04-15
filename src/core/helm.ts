@@ -1,4 +1,5 @@
 import { PreflightError } from './errors.js';
+import { PREREQ_BOOTSTRAP_HINT } from './preflight.js';
 import type { ProcRunner } from './proc.js';
 
 export interface HelmReleaseRef {
@@ -18,6 +19,7 @@ export class Helm {
     } catch {
       throw new PreflightError('Missing prerequisite: helm', [
         'Install Helm 3+ and ensure `helm` is on your PATH.',
+        PREREQ_BOOTSTRAP_HINT,
       ]);
     }
   }

@@ -7,7 +7,29 @@ CLI to install and run **[Nango](https://www.nango.dev)** locally on **Kubernete
 - **Node.js** 20+
 - **kubectl** and **Helm 3**
 - **kind** (a local cluster is created by default on first install)
+- **Docker** (for creating and using the kind cluster)
 - Access to pull **`nangohq/nango`** (and Bitnami dependency images used by the chart)
+
+If something is missing, install tools manually or use **`nangoctl local bootstrap`** (see [Bootstrap prerequisites](#bootstrap-prerequisites) below). Preflight errors from `local install` also suggest this command.
+
+## Bootstrap prerequisites
+
+`nangoctl local bootstrap` installs **Docker**, **kubectl**, **Helm**, and **kind** when they are not already on your `PATH`. Behavior depends on your OS:
+
+| Platform | What runs |
+|----------|-----------|
+| **macOS** | [Homebrew](https://brew.sh): `brew install` for `kubernetes-cli`, `kind`, `helm`; optional `brew install --cask docker` for Docker Desktop |
+| **Linux** | [snap](https://snapcraft.io/) (requires `sudo`): `kubectl`, `helm`, `kind`, `docker` as available in the store |
+| **Windows** | [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) for `kubectl` and Helm when present; **kind** and **Docker Desktop** may need a manual install (the command prints links) |
+| **Other** | Not automated; the command exits with links to official install docs |
+
+Useful flags:
+
+- **`--dry-run`** — Print the install commands without running them.
+- **`--no-docker`** — Only install CLI tools (`kubectl`, Helm, `kind`), skip Docker.
+- **`--json`** — Machine-readable report (`before` / `after` presence, planned commands, notes).
+
+Run **`nangoctl local bootstrap --help`** for the full flag list.
 
 ## Getting started
 
@@ -77,7 +99,7 @@ nangoctl local close
 ### 3. Day-to-day commands
 
 ```bash
-nangoctl local bootstrap              # install Docker / kubectl / Helm / kind where supported
+nangoctl local bootstrap              # see [Bootstrap prerequisites](#bootstrap-prerequisites)
 nangoctl local status
 nangoctl local logs --service server
 nangoctl local credentials          # dashboard basic-auth (from local configmap.yaml)

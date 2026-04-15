@@ -78,7 +78,7 @@ nangoctl local close
 ```bash
 nangoctl local status
 nangoctl local logs --service server
-nangoctl local credentials
+nangoctl local credentials          # dashboard basic-auth (from local configmap.yaml)
 nangoctl local config
 nangoctl local doctor
 nangoctl local close

@@ -13,6 +13,17 @@ export const DEFAULT_CONNECT_UI_POD_PORT = 3009;
  */
 export const NANGO_IMAGE_APP_ROOT = '/app/nango';
 
+/**
+ * Shared PVC mount for server + jobs (integrations and runtime data).
+ * Matches Helm `server.persistence.mountPath` / `jobs.persistence.mountPath` when using a shared claim.
+ */
+export const NANGO_PERSISTENCE_MOUNT_PATH = '/nango/data';
+
+/** Subdirectory under {@link NANGO_PERSISTENCE_MOUNT_PATH} for `providers.yaml` and integration assets. */
+export function nangoIntegrationsFullPath(): string {
+  return `${NANGO_PERSISTENCE_MOUNT_PATH}/integrations`;
+}
+
 export function getDefaultNamespace(): string {
   return 'nango';
 }

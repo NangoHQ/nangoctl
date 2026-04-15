@@ -51,6 +51,8 @@ export function generateLocalConfigMap(opts: {
 
     RUNNER_TYPE: 'KUBERNETES',
 
+    NANGO_INTEGRATIONS_FULL_PATH: config.integrationsFullPath,
+
     // No AWS ActiveMQ in local; use app default (`none`) for pub/sub.
     NANGO_PUBSUB_TRANSPORT: 'none',
 

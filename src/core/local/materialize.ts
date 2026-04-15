@@ -7,7 +7,11 @@ import type { LocalRuntimeConfig } from '../config/localConfigSchema.js';
 import { generateLocalSecrets, renderKubernetesSecret } from '../config/generateSecret.js';
 import { elasticsearchHttpUrl, helmCommonFullname, nangoComponentServiceUrl } from '../helm/names.js';
 import { localPostgresUrl, localRedisUrl } from './bitnamiLocalDeps.js';
-import { DEFAULT_CONNECT_UI_POD_PORT, DEFAULT_LOCAL_CONNECT_UI_PORT } from '../defaults.js';
+import {
+  DEFAULT_CONNECT_UI_POD_PORT,
+  DEFAULT_LOCAL_CONNECT_UI_PORT,
+  nangoIntegrationsFullPath,
+} from '../defaults.js';
 import { mergeValues } from '../values/mergeValues.js';
 import { generateLocalHelmValues } from '../values/generateLocalValues.js';
 import { LOCAL_CONFIGMAP_NAME, LOCAL_SECRET_NAME } from '../state.js';
@@ -99,6 +103,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     elasticsearchUrl: elasticsearchEnabled ? elasticsearchHttpUrl(input.release, input.namespace) : undefined,
     logsEnabled: elasticsearchEnabled,
     logsIndexPrefix: 'nango-local',
+    integrationsFullPath: nangoIntegrationsFullPath(),
     enterpriseMode: true,
   };
 

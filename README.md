@@ -31,6 +31,8 @@ This will, by default:
 - Run **Helm** to install the **nango** chart with values that:
   - Start the **server** via **`packages/server/entrypoint.sh`** (API + Connect UI), not only `node …/server.js`
   - Expose **Connect UI** on the server Service (port **3009** in the pod, alongside HTTP on **80** → **8080** in the container)
+  - Enable **persistent volumes** for **server** and **jobs**: the server chart creates a PVC; **jobs** reuses that PVC so both pods see the same files under **`/nango/data`**
+  - Set **`NANGO_INTEGRATIONS_FULL_PATH`** to **`/nango/data/integrations`** (place `providers.yaml` and related assets here)
 
 Install prints **kubectl port-forward** hints for:
 

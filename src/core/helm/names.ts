@@ -4,6 +4,13 @@ export function nangoServerServiceName(releaseName: string): string {
 }
 
 /**
+ * PVC name for server data (`server.names.fullname` in nango-helm-charts → `{commonFullname}-server`).
+ */
+export function nangoServerPersistenceClaimName(releaseName: string): string {
+  return `${helmCommonFullname(releaseName)}-server`;
+}
+
+/**
  * Mirrors `common.names.fullname` from Nango Helm charts (bitnami common templates).
  * When the sanitized release name contains the chart name, the fullname is the release name only.
  */

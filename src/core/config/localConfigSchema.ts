@@ -46,6 +46,8 @@ export const LocalRuntimeConfigSchema = z.object({
   logsEnabled: z.boolean(),
   /** Prefix for ES index names, e.g. `nango-local` → `nango-local-operations`. */
   logsIndexPrefix: z.string(),
+  /** Absolute path in server/jobs pods where `providers.yaml` and integrations live (see Helm persistence mount). */
+  integrationsFullPath: z.string(),
   enterpriseMode: z.boolean().optional(),
 });
 

@@ -21,6 +21,7 @@ export const CONFIG_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'NANGO_SERVER_URL', classification: 'override_in_local', notes: 'http://localhost:<port>' },
     { key: 'NANGO_PUBLIC_SERVER_URL', classification: 'override_in_local', notes: 'http://localhost:<port>' },
     { key: 'NANGO_PUBLIC_CONNECT_URL', classification: 'override_in_local', notes: 'http://localhost:<connect-ui-port> (separate from SERVER_PORT)' },
+    { key: 'NANGO_INTEGRATIONS_FULL_PATH', classification: 'derive_from_local_infra', notes: 'under PVC mount /nango/data/integrations' },
     { key: 'NANGO_CONNECT_UI_PORT', classification: 'override_in_local', notes: 'in-pod port (default 3009); pair with Helm server extraContainerPorts' },
     { key: 'FLAG_SERVE_CONNECT_UI', classification: 'override_in_local', notes: 'true for local' },
     { key: 'ORCHESTRATOR_DB_SSL', classification: 'disable_in_local', notes: 'false' },

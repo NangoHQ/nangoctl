@@ -3,6 +3,7 @@ import { buildLocalInstallCommand } from './install.js';
 import { buildLocalStatusCommand } from './status.js';
 import { buildLocalLogsCommand } from './logs.js';
 import { buildLocalOpenCommand } from './open.js';
+import { buildLocalCloseCommand } from './close.js';
 import { buildLocalCredentialsCommand } from './credentials.js';
 import { buildLocalUninstallCommand } from './uninstall.js';
 import { buildLocalDoctorCommand } from './doctor.js';
@@ -15,6 +16,7 @@ export function makeLocalCommand(): Command {
     .addCommand(buildLocalStatusCommand())
     .addCommand(buildLocalLogsCommand())
     .addCommand(buildLocalOpenCommand())
+    .addCommand(buildLocalCloseCommand())
     .addCommand(buildLocalCredentialsCommand())
     .addCommand(buildLocalUninstallCommand())
     .addCommand(buildLocalDoctorCommand())

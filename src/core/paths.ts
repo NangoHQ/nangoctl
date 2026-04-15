@@ -10,6 +10,8 @@ export const LocalPaths = z.object({
   stateDir: z.string(),
   stateFile: z.string(),
   seedFile: z.string(),
+  /** Written when `local open --detach` runs; contains kubectl PID (one process, multiple ports). */
+  portForwardPidFile: z.string(),
   /** Full merged Helm values (packaged local.defaults + generated overlay) for `helm upgrade -f`. */
   generatedValuesFile: z.string(),
   configMapManifestFile: z.string(),
@@ -40,6 +42,7 @@ export async function getLocalPaths(stateDir?: string): Promise<LocalPaths> {
     stateDir: base,
     stateFile: path.join(base, 'state.json'),
     seedFile: path.join(base, 'seed'),
+    portForwardPidFile: path.join(base, 'port-forward.pid'),
     generatedValuesFile: path.join(base, 'generated.values.yaml'),
     configMapManifestFile: path.join(base, 'configmap.yaml'),
     secretManifestFile: path.join(base, 'secret.yaml'),

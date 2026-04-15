@@ -10,10 +10,14 @@ import {
 import { getGlobalCliOptions } from '../../core/context.js';
 import { PreflightError } from '../../core/errors.js';
 import { nangoServerServiceName } from '../../core/helm/names.js';
-import { getLocalPaths } from '../../core/paths.js';
-import { createCommandLogger, renderJson, renderText } from '../../core/output/render.js';
+import { getLocalPaths, writeFile0600 } from '../../core/paths.js';
+import {
+  runForegroundPortForwardMulti,
+  startDetachedPortForwardMulti,
+  stopPortForwardFromPidFile,
+} from '../../core/portForward.js';
+import { createCommandLogger, renderJson } from '../../core/output/render.js';
 import { readState } from '../../core/state.js';
-import { startDetachedPortForward } from '../../core/portForward.js';
 
 const OpenFlagsSchema = z.object({
   json: z.boolean(),
@@ -26,6 +30,7 @@ const OpenFlagsSchema = z.object({
   connectUiPort: z.coerce.number().int().min(1).max(65535).optional(),
   noBrowser: z.boolean(),
   openConnect: z.boolean(),
+  detach: z.boolean(),
 });
 
 function openUrlInBrowser(url: string): void {
@@ -42,7 +47,7 @@ function openUrlInBrowser(url: string): void {
 export function buildLocalOpenCommand(): Command {
   const cmd = new Command('open')
     .description(
-      'Port-forward the Nango server Service (API/dashboard + Connect UI) and optionally open the dashboard in your browser'
+      'Port-forward the Nango server Service (API + Connect UI). Runs in the foreground until Ctrl+C unless you pass --detach'
     )
     .option('--namespace <ns>', 'Kubernetes namespace (default: from install state)')
     .option('--release <name>', 'Helm release name (default: from install state)')
@@ -56,9 +61,14 @@ export function buildLocalOpenCommand(): Command {
       '--connect-ui-port <port>',
       `Localhost port for Connect UI (default: from install state or ${DEFAULT_LOCAL_CONNECT_UI_PORT})`
     )
+    .option(
+      '--detach',
+      'Run port-forward in the background and exit (stop with: nangoctl local close)',
+      false
+    )
     .option('--no-browser', 'Only start port-forward; do not open a browser', false)
     .option('--open-connect', 'Also open Connect UI in the browser', false)
-    .option('--json', 'Machine-readable output', false)
+    .option('--json', 'Machine-readable output (also runs in the background like --detach)', false)
     .option('--verbose', 'Verbose output', false)
     .action(async (opts) => {
       const global = getGlobalCliOptions(cmd);
@@ -73,6 +83,7 @@ export function buildLocalOpenCommand(): Command {
         connectUiPort: opts.connectUiPort !== undefined ? Number(opts.connectUiPort) : undefined,
         noBrowser: Boolean(opts.noBrowser),
         openConnect: Boolean(opts.openConnect),
+        detach: Boolean(opts.detach),
       });
 
       if (!parsed.success) {
@@ -114,65 +125,92 @@ export function buildLocalOpenCommand(): Command {
       const serverUrl = `http://127.0.0.1:${serverPort}`;
       const connectUrl = `http://127.0.0.1:${connectUiPort}`;
 
-      await startDetachedPortForward({
+      const detach = flags.detach || flags.json;
+      const pfSpec = {
         namespace,
         resource,
-        localPort: serverPort,
-        remotePort: 80,
         kubeContext,
-      });
+        mappings: [
+          { localPort: serverPort, remotePort: 80 },
+          { localPort: connectUiPort, remotePort: DEFAULT_CONNECT_UI_POD_PORT },
+        ],
+      };
 
-      await startDetachedPortForward({
-        namespace,
-        resource,
-        localPort: connectUiPort,
-        remotePort: DEFAULT_CONNECT_UI_POD_PORT,
-        kubeContext,
-      });
+      const kubectlHint = `kubectl --context ${kubeContext} -n ${namespace} port-forward ${resource} ${serverPort}:80 ${connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`;
 
-      if (flags.json) {
-        renderJson({
-          ok: true,
-          action: 'open',
-          serverUrl,
-          connectUrl,
-          namespace,
-          release,
-          kubeContext,
-          service: serviceName,
-          portForward: {
-            server: { localPort: serverPort, remotePort: 80, resource },
-            connectUi: { localPort: connectUiPort, remotePort: DEFAULT_CONNECT_UI_POD_PORT, resource },
-          },
-        });
+      if (detach) {
+        await stopPortForwardFromPidFile(paths.portForwardPidFile);
+
+        const pid = await startDetachedPortForwardMulti(pfSpec);
+        await writeFile0600(paths.portForwardPidFile, `${pid}\n`);
+
+        if (flags.json) {
+          renderJson({
+            ok: true,
+            action: 'open',
+            mode: 'detach',
+            pid,
+            pidFile: paths.portForwardPidFile,
+            closeHint: 'nangoctl local close',
+            serverUrl,
+            connectUrl,
+            namespace,
+            release,
+            kubeContext,
+            service: serviceName,
+            portForward: {
+              server: { localPort: serverPort, remotePort: 80, resource },
+              connectUi: { localPort: connectUiPort, remotePort: DEFAULT_CONNECT_UI_POD_PORT, resource },
+            },
+          });
+        } else {
+          log.info(`Port-forward (background, pid ${pid}): ${kubectlHint}`);
+          log.info(`Server: ${serverUrl}`);
+          log.info(`Connect UI: ${connectUrl}`);
+          log.info(`Stop with: nangoctl local close`);
+        }
+
+        if (!flags.noBrowser) {
+          setTimeout(() => {
+            if (!flags.json) {
+              log.info(`Opening ${serverUrl}`);
+            }
+            openUrlInBrowser(serverUrl);
+            if (flags.openConnect) {
+              if (!flags.json) {
+                log.info(`Opening ${connectUrl}`);
+              }
+              openUrlInBrowser(connectUrl);
+            }
+          }, 400);
+        } else if (!flags.json) {
+          log.info('Browser launch skipped (--no-browser).');
+        }
+
         return;
       }
 
-      log.info(
-        `Port-forward (server): kubectl --context ${kubeContext} -n ${namespace} port-forward ${resource} ${serverPort}:80`
-      );
-      log.info(
-        `Port-forward (Connect UI): kubectl --context ${kubeContext} -n ${namespace} port-forward ${resource} ${connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`
-      );
-      log.info(`Server: ${serverUrl}`);
-      log.info(`Connect UI: ${connectUrl}`);
-
+      // Foreground: one kubectl process; Ctrl+C stops port-forwarding.
       if (!flags.noBrowser) {
-        log.info(`Opening ${serverUrl}`);
-        openUrlInBrowser(serverUrl);
-        if (flags.openConnect) {
-          log.info(`Opening ${connectUrl}`);
-          openUrlInBrowser(connectUrl);
-        }
+        setTimeout(() => {
+          log.info(`Opening ${serverUrl}`);
+          openUrlInBrowser(serverUrl);
+          if (flags.openConnect) {
+            log.info(`Opening ${connectUrl}`);
+            openUrlInBrowser(connectUrl);
+          }
+        }, 600);
       } else {
         log.info('Browser launch skipped (--no-browser).');
       }
 
-      const stopHint =
-        process.platform === 'win32'
-          ? 'Stop the background kubectl port-forward from Task Manager or by closing that console.'
-          : `Stop the background port-forwards, e.g. \`pkill -f "kubectl.*port-forward.*${resource}"\``;
-      renderText(stopHint);
+      if (!flags.json) {
+        log.info(`Port-forward (foreground; Ctrl+C to stop): ${kubectlHint}`);
+        log.info(`Server: ${serverUrl}`);
+        log.info(`Connect UI: ${connectUrl}`);
+      }
+
+      await runForegroundPortForwardMulti(pfSpec);
     });
 
   return cmd;

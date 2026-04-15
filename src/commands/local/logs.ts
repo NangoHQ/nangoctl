@@ -16,6 +16,16 @@ const schema = z.object({
   tail: z.coerce.number().int().positive().optional(),
 });
 
+/** Matches `service` enum except `all`; used for `kubectl logs -l` set selector. */
+const LOG_COMPONENTS = ['server', 'persist', 'orchestrator', 'jobs', 'runner'] as const;
+
+function logsLabelSelector(service: z.infer<typeof schema>['service']): string {
+  if (service === 'all') {
+    return `app.kubernetes.io/component in (${LOG_COMPONENTS.join(',')})`;
+  }
+  return `app.kubernetes.io/component=${service}`;
+}
+
 export function buildLocalLogsCommand(): Command {
   const cmd = new Command('logs')
     .description('Stream logs for local Nango services')
@@ -30,8 +40,7 @@ export function buildLocalLogsCommand(): Command {
       createCmd(schema, async (opts, ctx) => {
         const kubectl = new Kubectl(ctx.proc, { kubeContext: opts.context });
 
-        const selector =
-          opts.service === 'all' ? 'app.kubernetes.io/component' : `app.kubernetes.io/component=${opts.service}`;
+        const selector = logsLabelSelector(opts.service);
 
         ctx.out.writeLine(`Tailing logs in namespace ${opts.namespace} (${opts.service})`);
         await kubectl.logsBySelector({

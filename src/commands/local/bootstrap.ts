@@ -12,6 +12,8 @@ const schema = z.object({
   verbose: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   noDocker: z.boolean().default(false),
+  /** Commander sets `docker` to false when the user passes `--no-docker`. */
+  docker: z.boolean().optional(),
 });
 
 function printError(e: NangoctlError): void {
@@ -32,10 +34,11 @@ export function buildLocalBootstrapCommand(): Command {
     .action(
       createCmd(schema, async (opts, ctx) => {
         try {
+          const noDocker = opts.noDocker || opts.docker === false;
           const report = await runLocalBootstrap({
             proc: ctx.proc,
             dryRun: opts.dryRun,
-            noDocker: opts.noDocker,
+            noDocker,
           });
 
           if (opts.json) {

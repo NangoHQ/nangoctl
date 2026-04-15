@@ -19,7 +19,8 @@ const schema = z.object({
 /** Matches `service` enum except `all`; used for `kubectl logs -l` set selector. */
 const LOG_COMPONENTS = ['server', 'persist', 'orchestrator', 'jobs', 'runner'] as const;
 
-function logsLabelSelector(service: z.infer<typeof schema>['service']): string {
+/** Exported for tests; used by `local logs` to build `kubectl logs -l`. */
+export function logsLabelSelector(service: z.infer<typeof schema>['service']): string {
   if (service === 'all') {
     return `app.kubernetes.io/component in (${LOG_COMPONENTS.join(',')})`;
   }

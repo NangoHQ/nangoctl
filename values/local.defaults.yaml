@@ -1,0 +1,150 @@
+## Local defaults for `nangoctl local install`
+##
+## This file is intentionally minimal and stable. The CLI also generates
+## a second overlay with environment-specific values (ports, URLs, secret refs).
+##
+## Canonical chart: https://github.com/NangoHQ/nango-helm-charts/tree/main/charts/nango
+
+# Local runtime should be isolated to a namespace; chart default is already `nango`.
+namespaceOverride: nango
+
+# Bitnami subcharts verify images; `bitnamilegacy/*` requires opting in (see bitnami/charts#30850).
+global:
+  security:
+    allowInsecureImages: true
+  image:
+    tag: 6f4303950df96b59709443dbe5cdb1e1a2786753
+
+# Use in-cluster dependencies by default for local.
+# Bitnami defaults: Postgres/Redis use random passwords unless `auth` is set; connection URLs in
+# `nango-local-secrets` must match these values.
+#
+# Use the `postgres` superuser only (do not set `auth.username` / `auth.password` for a custom user):
+# otherwise the chart expects a `password` key in `nango-postgresql`, and upgrades from older releases
+# whose secret only has `postgres-password` fail with PASSWORDS ERROR.
+postgresql:
+  enabled: true
+  # If you change `postgresPassword` after the DB already ran, the PVC keeps the old password; use
+  # `nangoctl local install --recreate-postgres-data` once to wipe and reinit (destructive).
+  auth:
+    postgresPassword: nango
+    database: nango
+  readReplicas:
+    replicaCount: 0
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    password: nango
+  image:
+    repository: bitnamilegacy/redis
+    tag: 8.2.1-debian-12-r0
+elasticsearch:
+  enabled: true
+  # Bitnami charts pin `bitnami/os-shell` for sysctl init; many tags were removed from Docker Hub.
+  # kind nodes usually already allow enough mmap; disable to avoid a dead init pull.
+  sysctlImage:
+    enabled: false
+  # Single-node dev: one master pod with data + ingest + coordinating roles (Bitnami single-node style).
+  master:
+    masterOnly: false
+    replicaCount: 1
+  data:
+    replicaCount: 0
+  coordinating:
+    replicaCount: 0
+  ingest:
+    replicaCount: 0
+  image:
+    repository: bitnamilegacy/elasticsearch
+    tag: 9.1.2-debian-12-r0
+
+# Server: the chart defaults to `node packages/server/dist/server.js` and skips Connect UI.
+# Generated values override `server.command` to `packages/server/entrypoint.sh` (see Nango `Dockerfile.self_hosted`).
+# The pod serves the API on 8080 (Service port 80) and Connect UI on 3009; generated values add
+# `server.extraContainerPorts` / `server.service.extraPorts`. Prefer in-cluster access; `nangoctl local open`
+# port-forwards the server Service (both ports).
+server:
+  replicaCount: 1
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+persist:
+  replicaCount: 1
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+orchestrator:
+  replicaCount: 1
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+jobs:
+  replicaCount: 1
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+runner:
+  enabled: true
+  replicaCount: 1
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+  autoscaling:
+    hpa:
+      enabled: false
+  resourcesPreset: micro
+  extraEnvVarsCMs:
+    - nango-local-config
+  extraEnvVarsSecrets:
+    - nango-local-secrets
+
+# Optional service; keep off by default in local.
+metering:
+  enabled: false
+

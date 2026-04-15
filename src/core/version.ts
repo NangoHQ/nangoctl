@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Works in both dev (ts-node/tsx) and compiled dist (tsup) layouts.
+// Works in both dev (tsx) and compiled dist (single-file ESM bundle).
 export function readVersion(): string {
   // Try nearest package.json from CWD first.
   try {
@@ -12,9 +13,10 @@ export function readVersion(): string {
     // ignore
   }
 
-  // Fallback: walk from this file location.
+  // Fallback: walk from this module (ESM: bundled entry resolves to dist/bin/nangoctl.js).
   try {
-    const raw = readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const raw = readFileSync(join(here, '..', '..', 'package.json'), 'utf8');
     const pkg = JSON.parse(raw) as { version?: string };
     if (pkg?.version) return pkg.version;
   } catch {

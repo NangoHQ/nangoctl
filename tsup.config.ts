@@ -4,9 +4,9 @@ import path from 'node:path';
 
 export default defineConfig({
   entry: { 'bin/nangoctl': 'src/bin/nangoctl.ts' },
-  format: ['cjs'],
+  format: ['esm'],
   platform: 'node',
-  target: 'node18',
+  target: 'node20',
   sourcemap: true,
   clean: true,
   dts: false,

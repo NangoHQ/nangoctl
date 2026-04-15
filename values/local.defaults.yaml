@@ -12,6 +12,8 @@ namespaceOverride: nango
 global:
   security:
     allowInsecureImages: true
+  image:
+    tag: 6f4303950df96b59709443dbe5cdb1e1a2786753
 
 # Use in-cluster dependencies by default for local.
 # Bitnami defaults: Postgres/Redis use random passwords unless `auth` is set; connection URLs in

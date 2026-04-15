@@ -1,5 +1,18 @@
 import { getLocalPaths } from './paths.js';
 
+/** Localhost port for `kubectl port-forward` → Nango server Service (HTTP). */
+export const DEFAULT_LOCAL_SERVER_PORT = 4280;
+/** Localhost port for Connect UI (`NANGO_CONNECT_UI_PORT` in the pod, default 3009). */
+export const DEFAULT_LOCAL_CONNECT_UI_PORT = 4281;
+/** Container port where the server image serves Connect UI (matches Nango `.env.example`). */
+export const DEFAULT_CONNECT_UI_POD_PORT = 3009;
+
+/**
+ * WORKDIR in official `nangohq/nango` images (`Dockerfile` `WORKDIR /app/nango`).
+ * `packages/server/entrypoint.sh` expects this as `pwd` when starting Connect UI.
+ */
+export const NANGO_IMAGE_APP_ROOT = '/app/nango';
+
 export function getDefaultNamespace(): string {
   return 'nango';
 }

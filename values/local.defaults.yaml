@@ -60,7 +60,11 @@ elasticsearch:
     repository: bitnamilegacy/elasticsearch
     tag: 9.1.2-debian-12-r0
 
-# Prefer in-cluster access; `nangoctl` will port-forward the server service.
+# Server: the chart defaults to `node packages/server/dist/server.js` and skips Connect UI.
+# Generated values override `server.command` to `packages/server/entrypoint.sh` (see Nango `Dockerfile.self_hosted`).
+# The pod serves the API on 8080 (Service port 80) and Connect UI on 3009; generated values add
+# `server.extraContainerPorts` / `server.service.extraPorts`. Prefer in-cluster access; `nangoctl local open`
+# port-forwards the server Service (both ports).
 server:
   replicaCount: 1
   ingress:

@@ -7,6 +7,7 @@ import type { LocalRuntimeConfig } from '../config/localConfigSchema.js';
 import { generateLocalSecrets, renderKubernetesSecret } from '../config/generateSecret.js';
 import { elasticsearchHttpUrl, helmCommonFullname, nangoComponentServiceUrl } from '../helm/names.js';
 import { localPostgresUrl, localRedisUrl } from './bitnamiLocalDeps.js';
+import { DEFAULT_CONNECT_UI_POD_PORT, DEFAULT_LOCAL_CONNECT_UI_PORT } from '../defaults.js';
 import { mergeValues } from '../values/mergeValues.js';
 import { generateLocalHelmValues } from '../values/generateLocalValues.js';
 import { LOCAL_CONFIGMAP_NAME, LOCAL_SECRET_NAME } from '../state.js';
@@ -35,6 +36,10 @@ export type MaterializeLocalRuntimeInput = {
   namespace: string;
   release: string;
   serverPortLocalhost: number;
+  /** Localhost port for Connect UI (port-forward target differs from server). */
+  connectUiPortLocalhost?: number;
+  /** Container port for Connect UI; must match Helm `server.extraContainerPorts` (default 3009). */
+  connectUiPortInPod?: number;
   seed: string;
   lowResource: boolean;
   imageTag?: string;
@@ -69,6 +74,9 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
   const elasticsearchEnabled = Boolean(esCfg?.enabled);
 
   const publicBaseUrl = `http://127.0.0.1:${input.serverPortLocalhost}`;
+  const connectUiLocal = input.connectUiPortLocalhost ?? DEFAULT_LOCAL_CONNECT_UI_PORT;
+  const connectUiPod = input.connectUiPortInPod ?? DEFAULT_CONNECT_UI_POD_PORT;
+  const publicConnectBaseUrl = `http://127.0.0.1:${connectUiLocal}`;
   const inClusterUrls = buildInClusterUrls(input.namespace, input.release);
 
   const { generated } = generateLocalSecrets({
@@ -80,6 +88,8 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
   const runtimeConfig: LocalRuntimeConfig = {
     nodeEnv: 'development',
     serverPortInPod: 8080,
+    connectUiPortInPod: connectUiPod,
+    publicConnectBaseUrl,
     authAllowSignup: false,
     authEnabled: false,
     dashboardUsername: 'admin',
@@ -120,6 +130,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
       namespace: input.namespace,
       release: input.release,
       serverPortLocalhost: input.serverPortLocalhost,
+      connectUiPortInPod: connectUiPod,
     }
   );
 

@@ -8,7 +8,13 @@ import { PreflightError } from '../../core/errors.js';
 import { runPreflightChecks } from '../../core/preflight.js';
 import { getGlobalCliOptions } from '../../core/context.js';
 import { renderHuman, renderJson } from '../../core/output/render.js';
-import { getDefaultClusterName, getDefaultHelmRepo } from '../../core/defaults.js';
+import {
+  DEFAULT_CONNECT_UI_POD_PORT,
+  DEFAULT_LOCAL_CONNECT_UI_PORT,
+  DEFAULT_LOCAL_SERVER_PORT,
+  getDefaultClusterName,
+  getDefaultHelmRepo,
+} from '../../core/defaults.js';
 import { getLocalPaths, ensureStateDir, writeFile0600 } from '../../core/paths.js';
 import { readState, writeState, type LocalState } from '../../core/state.js';
 import { ProcRunner } from '../../core/proc.js';
@@ -31,6 +37,7 @@ const InstallFlagsSchema = z.object({
   set: z.array(z.string()),
   access: z.enum(['port-forward', 'ingress']),
   serverPort: z.coerce.number().int().min(1).max(65535),
+  connectUiPort: z.coerce.number().int().min(1).max(65535),
   createCluster: z.boolean(),
   clusterRuntime: z.enum(['kind']),
   clusterName: z.string().min(1),
@@ -52,7 +59,12 @@ export function buildLocalInstallCommand(): Command {
     .option('--values <file>', 'Additional Helm values file', (v, p: string[]) => [...p, v], [])
     .option('--set <key=val>', 'Additional Helm set', (v, p: string[]) => [...p, v], [])
     .option('--access <mode>', 'Access mode: port-forward or ingress', 'port-forward')
-    .option('--server-port <port>', 'Localhost port for server', '4280')
+    .option('--server-port <port>', 'Localhost port for server API/dashboard', String(DEFAULT_LOCAL_SERVER_PORT))
+    .option(
+      '--connect-ui-port <port>',
+      'Localhost port for Connect UI (maps to NANGO_CONNECT_UI_PORT in the server pod)',
+      String(DEFAULT_LOCAL_CONNECT_UI_PORT)
+    )
     .option('--create-cluster', 'Create local cluster if missing', true)
     .option('--no-create-cluster', 'Do not create local cluster')
     .option('--cluster-runtime <runtime>', 'Local cluster runtime', 'kind')
@@ -82,6 +94,7 @@ export function buildLocalInstallCommand(): Command {
         set: opts.set,
         access: opts.access,
         serverPort: opts.serverPort,
+        connectUiPort: opts.connectUiPort,
         createCluster: opts.createCluster,
         clusterRuntime: opts.clusterRuntime,
         clusterName: opts.clusterName,
@@ -136,6 +149,7 @@ export function buildLocalInstallCommand(): Command {
         namespace: ctx.namespace,
         release: ctx.release,
         serverPortLocalhost: ctx.serverPort,
+        connectUiPortLocalhost: ctx.connectUiPort,
         seed,
         lowResource: ctx.lowResource,
       });
@@ -212,6 +226,8 @@ export function buildLocalInstallCommand(): Command {
         chartRef: ctx.chart,
         chartVersion: ctx.chartVersion,
         seed,
+        serverLocalPort: ctx.serverPort,
+        connectUiLocalPort: ctx.connectUiPort,
         createdAt: existingState?.createdAt ?? now,
         updatedAt: now,
       };
@@ -225,7 +241,9 @@ export function buildLocalInstallCommand(): Command {
         chart: ctx.chart,
         chartVersion: ctx.chartVersion ?? null,
         serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
+        connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
         portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
+        connectUiPortForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`,
         stateDir: paths.stateDir,
         recreatePostgresData: ctx.recreatePostgresData,
         generated: {
@@ -244,8 +262,10 @@ export function buildLocalInstallCommand(): Command {
         `Namespace: ${ctx.namespace}`,
         `Release: ${ctx.release}`,
         `Kube context: ${kubeContext}`,
-        `Open (after port-forward): ${out.serverUrl}`,
-        `Port-forward: ${out.portForwardHint}`,
+        `Server (after port-forward): ${out.serverUrl}`,
+        `Connect UI (after port-forward): ${out.connectUiUrl}`,
+        `Port-forward (server): ${out.portForwardHint}`,
+        `Port-forward (Connect UI): ${out.connectUiPortForwardHint}`,
         `State: ${paths.stateDir}`,
       ];
       if (ctx.recreatePostgresData) {

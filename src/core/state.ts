@@ -17,6 +17,10 @@ export const LocalStateSchema = z.object({
   chartVersion: z.string().optional(),
   // Seed used to deterministically generate local secrets. Stored locally only.
   seed: z.string(),
+  /** Localhost port used for server port-forward (optional for older state files). */
+  serverLocalPort: z.number().int().min(1).max(65535).optional(),
+  /** Localhost port used for Connect UI port-forward (optional for older state files). */
+  connectUiLocalPort: z.number().int().min(1).max(65535).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

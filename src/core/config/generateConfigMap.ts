@@ -32,10 +32,14 @@ export function generateLocalConfigMap(opts: {
     NANGO_DASHBOARD_USERNAME: String(config.dashboardUsername),
     NANGO_DASHBOARD_PASSWORD: String(config.dashboardPassword),
 
+    // Connect UI is served on a separate port in the server image (same pod as the API).
+    FLAG_SERVE_CONNECT_UI: 'true',
+    NANGO_CONNECT_UI_PORT: String(config.connectUiPortInPod),
+
     // Public-facing URLs (local port-forward / localhost)
     NANGO_SERVER_URL: config.publicBaseUrl,
     NANGO_PUBLIC_SERVER_URL: config.publicBaseUrl,
-    NANGO_PUBLIC_CONNECT_URL: `${config.publicBaseUrl}/connect`,
+    NANGO_PUBLIC_CONNECT_URL: config.publicConnectBaseUrl,
 
     // In-cluster URLs (Helm `*-svc` service names)
     SERVER_SERVICE_URL: config.inClusterUrls.server,

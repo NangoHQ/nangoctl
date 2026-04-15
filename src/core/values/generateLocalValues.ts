@@ -1,11 +1,14 @@
 import YAML from 'yaml';
 
+import { DEFAULT_CONNECT_UI_POD_PORT, NANGO_IMAGE_APP_ROOT } from '../defaults.js';
 import { LOCAL_CONFIGMAP_NAME, LOCAL_SECRET_NAME } from '../state.js';
 
 export type GeneratedValuesContext = {
   namespace: string;
   release: string;
   serverPortLocalhost: number;
+  /** Port inside the server container for Connect UI (exposed via Service extraPorts). */
+  connectUiPortInPod: number;
 };
 
 export type LocalHelmFlags = {
@@ -19,12 +22,30 @@ export type GeneratedValuesOutput = {
 };
 
 export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedValuesContext): GeneratedValuesOutput {
+  const connectUiPort = ctx.connectUiPortInPod ?? DEFAULT_CONNECT_UI_POD_PORT;
+
   const values: Record<string, unknown> = {
     namespaceOverride: ctx.namespace,
 
     server: {
       ingress: { enabled: false },
-      service: { type: 'ClusterIP' },
+      // Chart defaults to `args: [node, packages/server/dist/server.js]`, which skips
+      // `packages/server/entrypoint.sh` and never starts Connect UI (see Nango `Dockerfile.self_hosted`).
+      command: ['/bin/bash', '-c', `cd ${NANGO_IMAGE_APP_ROOT} && exec ./packages/server/entrypoint.sh`],
+      // Empty array clears chart defaults; `if .Values.server.args` is false so no args are rendered.
+      args: [],
+      service: {
+        type: 'ClusterIP',
+        extraPorts: [
+          {
+            name: 'connect-ui',
+            port: connectUiPort,
+            protocol: 'TCP',
+            targetPort: 'connect-ui',
+          },
+        ],
+      },
+      extraContainerPorts: [{ name: 'connect-ui', containerPort: connectUiPort }],
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
       extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
     },

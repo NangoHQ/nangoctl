@@ -77,6 +77,20 @@ export class Helm {
     return { raw: res.stdout || res.stderr || '' };
   }
 
+  /** `helm status -o json` for structured local status; does not throw on missing release. */
+  async tryStatusJson(opts: { ref: HelmReleaseRef }): Promise<unknown | null> {
+    const args = ['status', opts.ref.release, '--namespace', opts.ref.namespace, '-o', 'json'];
+    const ctx = this.opts.kubeContext;
+    if (ctx) args.unshift('--kube-context', ctx);
+    const res = await this.proc.run('helm', args, { stdio: 'pipe', allowNonZeroExit: true });
+    if (res.exitCode !== 0) return null;
+    try {
+      return JSON.parse(res.stdout || '{}') as unknown;
+    } catch {
+      return null;
+    }
+  }
+
   async uninstall(opts: { ref: HelmReleaseRef; keepHistory?: boolean }): Promise<void> {
     const args = ['uninstall', opts.ref.release, '--namespace', opts.ref.namespace];
     if (opts.keepHistory) args.push('--keep-history');

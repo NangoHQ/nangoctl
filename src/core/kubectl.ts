@@ -19,6 +19,17 @@ export class Kubectl {
     }
   }
 
+  /** Active kubeconfig context name, if any. */
+  async currentContext(): Promise<string | undefined> {
+    const res = await this.proc.run('kubectl', ['config', 'current-context'], {
+      stdio: 'pipe',
+      allowNonZeroExit: true,
+    });
+    if (res.exitCode !== 0) return undefined;
+    const name = res.stdout.trim();
+    return name.length > 0 ? name : undefined;
+  }
+
   async applyYaml(yaml: string, opts: { kubeContext?: string; namespace?: string } = {}): Promise<void> {
     const args = this.withDefaults(['apply', '-f', '-'], opts);
     await this.proc.run('kubectl', args, { stdin: yaml, stdio: 'pipe' });
@@ -34,6 +45,28 @@ export class Kubectl {
       quiet: true,
     });
     return res.stdout.trim();
+  }
+
+  /**
+   * JSON from `kubectl get ... -o json`. On failure returns `ok: false` with stderr/stdout (no throw).
+   */
+  async getJson(
+    args: string[],
+    opts: { kubeContext?: string; namespace?: string; skipNamespace?: boolean } = {}
+  ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+    const res = await this.proc.run('kubectl', this.withDefaults(args, opts), {
+      stdio: 'pipe',
+      allowNonZeroExit: true,
+    });
+    if (res.exitCode !== 0) {
+      const err = (res.stderr || res.stdout || 'kubectl failed').trim();
+      return { ok: false, error: err };
+    }
+    try {
+      return { ok: true, data: JSON.parse(res.stdout) as unknown };
+    } catch {
+      return { ok: false, error: 'Invalid JSON from kubectl' };
+    }
   }
 
   async logsBySelector(params: {

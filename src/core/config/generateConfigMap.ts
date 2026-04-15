@@ -49,7 +49,7 @@ export function generateLocalConfigMap(opts: {
     RUNNER_SERVICE_URL: config.inClusterUrls.runner,
     RUNNER_URL: config.inClusterUrls.runner,
 
-    RUNNER_TYPE: 'KUBERNETES',
+    RUNNER_TYPE: 'REMOTE',
 
     NANGO_INTEGRATIONS_FULL_PATH: config.integrationsFullPath,
 

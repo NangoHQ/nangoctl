@@ -23,6 +23,9 @@ export const LocalRuntimeConfigSchema = z.object({
   nodeEnv: z.string(),
   serverPortInPod: z.number(),
   authAllowSignup: z.boolean(),
+  authEnabled: z.boolean(),
+  dashboardUsername: z.string(),
+  dashboardPassword: z.string(),
   publicBaseUrl: z.string(),
   inClusterUrls: z.object({
     server: z.string(),

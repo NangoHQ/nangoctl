@@ -27,7 +27,10 @@ export function generateLocalConfigMap(opts: {
     SERVER_RUN_MODE: 'DOCKERIZED',
     SERVER_PORT: String(config.serverPortInPod),
     HTTP_AGENT_CONFIG,
+    FLAG_AUTH_ENABLED: String(config.authEnabled),
     AUTH_ALLOW_SIGNUP: String(config.authAllowSignup),
+    NANGO_DASHBOARD_USERNAME: String(config.dashboardUsername),
+    NANGO_DASHBOARD_PASSWORD: String(config.dashboardPassword),
 
     // Public-facing URLs (local port-forward / localhost)
     NANGO_SERVER_URL: config.publicBaseUrl,

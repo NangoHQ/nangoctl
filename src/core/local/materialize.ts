@@ -80,7 +80,10 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
   const runtimeConfig: LocalRuntimeConfig = {
     nodeEnv: 'development',
     serverPortInPod: 8080,
-    authAllowSignup: true,
+    authAllowSignup: false,
+    authEnabled: false,
+    dashboardUsername: 'admin',
+    dashboardPassword: 'P@ssw0rd',
     publicBaseUrl,
     inClusterUrls,
     elasticsearchUrl: elasticsearchEnabled ? elasticsearchHttpUrl(input.release, input.namespace) : undefined,

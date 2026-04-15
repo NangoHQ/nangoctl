@@ -6,7 +6,6 @@ import { buildLocalOpenCommand } from './open.js';
 import { buildLocalCloseCommand } from './close.js';
 import { buildLocalCredentialsCommand } from './credentials.js';
 import { buildLocalUninstallCommand } from './uninstall.js';
-import { buildLocalDoctorCommand } from './doctor.js';
 import { buildLocalConfigCommand } from './config.js';
 
 export function makeLocalCommand(): Command {
@@ -19,7 +18,6 @@ export function makeLocalCommand(): Command {
     .addCommand(buildLocalCloseCommand())
     .addCommand(buildLocalCredentialsCommand())
     .addCommand(buildLocalUninstallCommand())
-    .addCommand(buildLocalDoctorCommand())
     .addCommand(buildLocalConfigCommand());
 }
 

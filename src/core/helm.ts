@@ -22,7 +22,12 @@ export class Helm {
     }
   }
 
-  async repoAddIfMissing(opts: { name: string; url: string }): Promise<void> {
+  async repoAddIfMissing(opts: {
+    name: string;
+    url: string;
+    /** Default `pipe` to keep install output calm; use `inherit` with `--verbose`. */
+    stdio?: 'inherit' | 'pipe';
+  }): Promise<void> {
     const list = await this.proc.run('helm', ['repo', 'list', '-o', 'json'], { stdio: 'pipe' });
     try {
       const repos = JSON.parse(list.stdout || '[]') as Array<{ name: string; url: string }>;
@@ -30,11 +35,12 @@ export class Helm {
     } catch {
       // fallthrough
     }
-    await this.proc.run('helm', ['repo', 'add', opts.name, opts.url], { stdio: 'inherit' });
+    const stdio = opts.stdio ?? 'pipe';
+    await this.proc.run('helm', ['repo', 'add', opts.name, opts.url], { stdio });
   }
 
-  async repoUpdate(): Promise<void> {
-    await this.proc.run('helm', ['repo', 'update'], { stdio: 'inherit' });
+  async repoUpdate(opts?: { stdio?: 'inherit' | 'pipe' }): Promise<void> {
+    await this.proc.run('helm', ['repo', 'update'], { stdio: opts?.stdio ?? 'pipe' });
   }
 
   async installOrUpgrade(opts: {
@@ -46,6 +52,8 @@ export class Helm {
     createNamespace?: boolean;
     wait?: boolean;
     timeout?: string;
+    /** Default `pipe` so Kubernetes admission warnings do not flood the terminal; use `inherit` with `--verbose`. */
+    stdio?: 'inherit' | 'pipe';
   }): Promise<void> {
     const args = ['upgrade', '--install', opts.ref.release, opts.chart, '--namespace', opts.ref.namespace];
     if (opts.createNamespace) args.push('--create-namespace');
@@ -58,7 +66,7 @@ export class Helm {
     if (ctx) {
       args.unshift('--kube-context', ctx);
     }
-    await this.proc.run('helm', args, { stdio: 'inherit' });
+    await this.proc.run('helm', args, { stdio: opts.stdio ?? 'pipe' });
   }
 
   async status(opts: { ref: HelmReleaseRef }): Promise<{ raw: string }> {

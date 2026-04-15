@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { PreflightError } from '../../core/errors.js';
 import { runPreflightChecks } from '../../core/preflight.js';
 import { getGlobalCliOptions } from '../../core/context.js';
+import { createInstallProgress } from '../../core/installProgress.js';
 import { renderHuman, renderJson } from '../../core/output/render.js';
 import {
   DEFAULT_CONNECT_UI_POD_PORT,
@@ -23,7 +24,7 @@ import { Helm } from '../../core/helm.js';
 import { kindEnsureCluster } from '../../core/kind.js';
 import { materializeLocalRuntime, defaultKubeContextForKind } from '../../core/local/materialize.js';
 import { mergeValues } from '../../core/values/mergeValues.js';
-import { nangoServerServiceName } from '../../core/helm/names.js';
+import { nangoServerDeploymentName, nangoServerServiceName } from '../../core/helm/names.js';
 
 const InstallFlagsSchema = z.object({
   json: z.boolean(),
@@ -79,7 +80,7 @@ export function buildLocalInstallCommand(): Command {
       false
     )
     .option('--json', 'Machine-readable output', false)
-    .option('--verbose', 'Verbose output', false)
+    .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
     .action(async (opts) => {
       const global = getGlobalCliOptions(cmd);
       const parsed = InstallFlagsSchema.safeParse({
@@ -110,171 +111,223 @@ export function buildLocalInstallCommand(): Command {
       }
 
       const ctx = parsed.data;
-      await runPreflightChecks({
-        requireDocker: ctx.clusterRuntime === 'kind' && ctx.createCluster,
-        requireHelm: true,
-        requireKubectl: true,
-        requireKind: ctx.clusterRuntime === 'kind' && ctx.createCluster,
-      });
+      const progress = createInstallProgress({ json: ctx.json, verbose: ctx.verbose });
+      const substdio = ctx.verbose ? 'inherit' : 'pipe';
 
-      const paths = await getLocalPaths(ctx.stateDir);
-      await ensureStateDir(paths);
+      try {
+        if (!ctx.json) {
+          progress.header();
+        }
 
-      const proc = new ProcRunner();
-      const kubeContext = ctx.context ?? defaultKubeContextForKind(ctx.clusterName);
+        let ph = progress.phase('Checking prerequisites (Docker, kubectl, Helm, kind)');
+        await runPreflightChecks({
+          requireDocker: ctx.clusterRuntime === 'kind' && ctx.createCluster,
+          requireHelm: true,
+          requireKubectl: true,
+          requireKind: ctx.clusterRuntime === 'kind' && ctx.createCluster,
+        });
+        ph.succeed();
 
-      if (ctx.clusterRuntime === 'kind') {
-        await kindEnsureCluster({
-          clusterName: ctx.clusterName,
-          createIfMissing: ctx.createCluster,
-          logger: {
-            debug: (m: string) => {
-              if (ctx.verbose) process.stderr.write(`${m}\n`);
+        const paths = await getLocalPaths(ctx.stateDir);
+        await ensureStateDir(paths);
+
+        const proc = new ProcRunner();
+        const kubeContext = ctx.context ?? defaultKubeContextForKind(ctx.clusterName);
+
+        if (ctx.clusterRuntime === 'kind') {
+          ph = progress.phase('Preparing local Kubernetes cluster (kind)');
+          const { created } = await kindEnsureCluster({
+            clusterName: ctx.clusterName,
+            createIfMissing: ctx.createCluster,
+            stdio: substdio,
+            logger: {
+              debug: (m: string) => {
+                if (ctx.verbose) process.stderr.write(`${m}\n`);
+              },
+              info: (m: string) => {
+                if (ctx.verbose) process.stderr.write(`${m}\n`);
+              },
             },
-            info: (m: string) => process.stderr.write(`${m}\n`),
+          });
+          ph.succeed(
+            created
+              ? `Created cluster “${ctx.clusterName}” (context ${kubeContext})`
+              : `Using existing cluster “${ctx.clusterName}”`
+          );
+        }
+
+        ph = progress.phase('Generating Nango configuration (ConfigMap, Secret, Helm values)');
+        let seed: string;
+        const existingState = await readState(paths.stateFile);
+        if (existingState && !ctx.rotateSecrets) {
+          seed = existingState.seed;
+        } else {
+          seed = randomBytes(32).toString('hex');
+          await writeFile0600(paths.seedFile, `${seed}\n`);
+        }
+
+        const materialized = await materializeLocalRuntime({
+          namespace: ctx.namespace,
+          release: ctx.release,
+          serverPortLocalhost: ctx.serverPort,
+          connectUiPortLocalhost: ctx.connectUiPort,
+          seed,
+          lowResource: ctx.lowResource,
+        });
+
+        await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
+        await writeFile0600(paths.secretManifestFile, materialized.secretYaml);
+
+        let mergedForHelm = materialized.mergedValues;
+        for (const vf of ctx.values) {
+          const extra = YAML.parse(await readFile(vf, 'utf8')) as Record<string, unknown>;
+          mergedForHelm = mergeValues(mergedForHelm, extra);
+        }
+        const mergedYaml = YAML.stringify(mergedForHelm);
+        await writeFile0600(paths.generatedValuesFile, mergedYaml);
+        ph.succeed();
+
+        const kubectl = new Kubectl(proc, { kubeContext, namespace: ctx.namespace });
+        const helm = new Helm(proc, { kubeContext });
+
+        ph = progress.phase('Verifying kubectl and Helm');
+        await kubectl.preflight();
+        await helm.preflight();
+        ph.succeed();
+
+        ph = progress.phase('Ensuring Kubernetes namespace');
+        await kubectl.ensureNamespace(ctx.namespace, { kubeContext });
+        ph.succeed(ctx.namespace);
+
+        if (ctx.recreatePostgresData) {
+          ph = progress.phase('Recreating PostgreSQL data volume');
+          const sts = `${ctx.release}-postgresql`;
+          const pvc = `data-${sts}-0`;
+          const pgSecret = `${ctx.release}-postgresql`;
+          await kubectl.run(['scale', `statefulset/${sts}`, '--replicas=0'], {
+            kubeContext,
+            namespace: ctx.namespace,
+            allowNonZeroExit: true,
+            stdio: substdio,
+          });
+          await kubectl.run(['wait', '--for=delete', `pod/${sts}-0`, '--timeout=120s'], {
+            kubeContext,
+            namespace: ctx.namespace,
+            allowNonZeroExit: true,
+            stdio: substdio,
+          });
+          await kubectl.run(['delete', 'pvc', pvc, '--ignore-not-found'], {
+            kubeContext,
+            namespace: ctx.namespace,
+            stdio: substdio,
+          });
+          await kubectl.run(['delete', 'secret', pgSecret, '--ignore-not-found'], {
+            kubeContext,
+            namespace: ctx.namespace,
+            stdio: substdio,
+          });
+          ph.succeed();
+        }
+
+        ph = progress.phase('Applying ConfigMap and Secret to the cluster');
+        const combinedApply = `${materialized.configMapYaml}\n---\n${materialized.secretYaml}\n`;
+        await kubectl.applyYaml(combinedApply, { kubeContext, namespace: ctx.namespace });
+        ph.succeed();
+
+        ph = progress.phase('Fetching Helm chart repository');
+        await helm.repoAddIfMissing({ ...getDefaultHelmRepo(), stdio: substdio });
+        await helm.repoUpdate({ stdio: substdio });
+        ph.succeed();
+
+        ph = progress.phase('Installing Nango with Helm (may take several minutes)');
+        const valuesFiles = [paths.generatedValuesFile, ...ctx.values];
+        await helm.installOrUpgrade({
+          ref: { namespace: ctx.namespace, release: ctx.release },
+          chart: ctx.chart,
+          chartVersion: ctx.chartVersion,
+          valuesFiles,
+          set: ctx.set,
+          createNamespace: true,
+          wait: true,
+          timeout: ctx.waitTimeout,
+          stdio: substdio,
+        });
+        ph.succeed('Helm release is deployed');
+
+        ph = progress.phase('Confirming Nango server deployment is ready');
+        await kubectl.rolloutStatusDeployment(nangoServerDeploymentName(ctx.release), {
+          kubeContext,
+          namespace: ctx.namespace,
+          timeout: '3m',
+          stdio: substdio,
+        });
+        ph.succeed();
+
+        const now = new Date().toISOString();
+        const nextState: LocalState = {
+          version: 1,
+          clusterRuntime: 'kind',
+          clusterName: ctx.clusterName,
+          kubeContext,
+          namespace: ctx.namespace,
+          release: ctx.release,
+          chartRef: ctx.chart,
+          chartVersion: ctx.chartVersion,
+          seed,
+          serverLocalPort: ctx.serverPort,
+          connectUiLocalPort: ctx.connectUiPort,
+          createdAt: existingState?.createdAt ?? now,
+          updatedAt: now,
+        };
+        await writeState(paths.stateFile, nextState);
+
+        const out = {
+          ok: true,
+          namespace: ctx.namespace,
+          release: ctx.release,
+          kubeContext,
+          chart: ctx.chart,
+          chartVersion: ctx.chartVersion ?? null,
+          serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
+          connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
+          portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
+          connectUiPortForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`,
+          stateDir: paths.stateDir,
+          recreatePostgresData: ctx.recreatePostgresData,
+          generated: {
+            configMap: paths.configMapManifestFile,
+            secret: paths.secretManifestFile,
+            values: paths.generatedValuesFile,
           },
+        };
+
+        if (ctx.json) {
+          renderJson(out);
+          return;
+        }
+
+        process.stderr.write('\n');
+
+        const body = [
+          `Namespace: ${ctx.namespace}`,
+          `Release: ${ctx.release}`,
+          `Kube context: ${kubeContext}`,
+          `Server (after port-forward): ${out.serverUrl}`,
+          `Connect UI (after port-forward): ${out.connectUiUrl}`,
+          `Port-forward (server): ${out.portForwardHint}`,
+          `Port-forward (Connect UI): ${out.connectUiPortForwardHint}`,
+          `State: ${paths.stateDir}`,
+        ];
+        if (ctx.recreatePostgresData) {
+          body.push('PostgreSQL data volume was deleted and reinitialized on this run.');
+        }
+        renderHuman({
+          title: 'Local Nango install complete',
+          body,
         });
+      } finally {
+        progress.dispose();
       }
-
-      let seed: string;
-      const existingState = await readState(paths.stateFile);
-      if (existingState && !ctx.rotateSecrets) {
-        seed = existingState.seed;
-      } else {
-        seed = randomBytes(32).toString('hex');
-        await writeFile0600(paths.seedFile, `${seed}\n`);
-      }
-
-      const materialized = await materializeLocalRuntime({
-        namespace: ctx.namespace,
-        release: ctx.release,
-        serverPortLocalhost: ctx.serverPort,
-        connectUiPortLocalhost: ctx.connectUiPort,
-        seed,
-        lowResource: ctx.lowResource,
-      });
-
-      await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
-      await writeFile0600(paths.secretManifestFile, materialized.secretYaml);
-
-      let mergedForHelm = materialized.mergedValues;
-      for (const vf of ctx.values) {
-        const extra = YAML.parse(await readFile(vf, 'utf8')) as Record<string, unknown>;
-        mergedForHelm = mergeValues(mergedForHelm, extra);
-      }
-      const mergedYaml = YAML.stringify(mergedForHelm);
-      await writeFile0600(paths.generatedValuesFile, mergedYaml);
-
-      const kubectl = new Kubectl(proc, { kubeContext, namespace: ctx.namespace });
-      const helm = new Helm(proc, { kubeContext });
-
-      await kubectl.preflight();
-      await helm.preflight();
-
-      await kubectl.ensureNamespace(ctx.namespace, { kubeContext });
-
-      if (ctx.recreatePostgresData) {
-        const sts = `${ctx.release}-postgresql`;
-        const pvc = `data-${sts}-0`;
-        const pgSecret = `${ctx.release}-postgresql`;
-        process.stderr.write(
-          `[nangoctl] Recreating PostgreSQL data (${sts}): scale down → delete PVC ${pvc} → delete secret ${pgSecret}\n`
-        );
-        await kubectl.run(['scale', `statefulset/${sts}`, '--replicas=0'], {
-          kubeContext,
-          namespace: ctx.namespace,
-          allowNonZeroExit: true,
-        });
-        await kubectl.run(['wait', '--for=delete', `pod/${sts}-0`, '--timeout=120s'], {
-          kubeContext,
-          namespace: ctx.namespace,
-          allowNonZeroExit: true,
-        });
-        await kubectl.run(['delete', 'pvc', pvc, '--ignore-not-found'], { kubeContext, namespace: ctx.namespace });
-        await kubectl.run(['delete', 'secret', pgSecret, '--ignore-not-found'], {
-          kubeContext,
-          namespace: ctx.namespace,
-        });
-      }
-
-      const combinedApply = `${materialized.configMapYaml}\n---\n${materialized.secretYaml}\n`;
-      await kubectl.applyYaml(combinedApply, { kubeContext, namespace: ctx.namespace });
-
-      await helm.repoAddIfMissing(getDefaultHelmRepo());
-      await helm.repoUpdate();
-
-      const valuesFiles = [paths.generatedValuesFile, ...ctx.values];
-      await helm.installOrUpgrade({
-        ref: { namespace: ctx.namespace, release: ctx.release },
-        chart: ctx.chart,
-        chartVersion: ctx.chartVersion,
-        valuesFiles,
-        set: ctx.set,
-        createNamespace: true,
-        wait: true,
-        timeout: ctx.waitTimeout,
-      });
-
-      const now = new Date().toISOString();
-      const nextState: LocalState = {
-        version: 1,
-        clusterRuntime: 'kind',
-        clusterName: ctx.clusterName,
-        kubeContext,
-        namespace: ctx.namespace,
-        release: ctx.release,
-        chartRef: ctx.chart,
-        chartVersion: ctx.chartVersion,
-        seed,
-        serverLocalPort: ctx.serverPort,
-        connectUiLocalPort: ctx.connectUiPort,
-        createdAt: existingState?.createdAt ?? now,
-        updatedAt: now,
-      };
-      await writeState(paths.stateFile, nextState);
-
-      const out = {
-        ok: true,
-        namespace: ctx.namespace,
-        release: ctx.release,
-        kubeContext,
-        chart: ctx.chart,
-        chartVersion: ctx.chartVersion ?? null,
-        serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
-        connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
-        portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
-        connectUiPortForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`,
-        stateDir: paths.stateDir,
-        recreatePostgresData: ctx.recreatePostgresData,
-        generated: {
-          configMap: paths.configMapManifestFile,
-          secret: paths.secretManifestFile,
-          values: paths.generatedValuesFile,
-        },
-      };
-
-      if (ctx.json) {
-        renderJson(out);
-        return;
-      }
-
-      const body = [
-        `Namespace: ${ctx.namespace}`,
-        `Release: ${ctx.release}`,
-        `Kube context: ${kubeContext}`,
-        `Server (after port-forward): ${out.serverUrl}`,
-        `Connect UI (after port-forward): ${out.connectUiUrl}`,
-        `Port-forward (server): ${out.portForwardHint}`,
-        `Port-forward (Connect UI): ${out.connectUiPortForwardHint}`,
-        `State: ${paths.stateDir}`,
-      ];
-      if (ctx.recreatePostgresData) {
-        body.push('PostgreSQL data volume was deleted and reinitialized on this run.');
-      }
-      renderHuman({
-        title: 'Local Nango install complete',
-        body,
-      });
     });
 
   return cmd;

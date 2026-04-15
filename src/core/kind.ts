@@ -7,9 +7,11 @@ export type KindLogger = {
 };
 
 export type KindEnsureClusterArgs = {
-    clusterName: string;
-    createIfMissing: boolean;
-    logger: KindLogger;
+  clusterName: string;
+  createIfMissing: boolean;
+  logger: KindLogger;
+  /** `pipe` hides kind progress (default); `inherit` shows full output (e.g. `--verbose`). */
+  stdio?: 'inherit' | 'pipe';
 };
 
 export async function kindIsInstalled(): Promise<boolean> {
@@ -29,26 +31,32 @@ export async function kindListClusters(): Promise<string[]> {
         .filter(Boolean);
 }
 
-export async function kindEnsureCluster({ clusterName, createIfMissing, logger }: KindEnsureClusterArgs): Promise<void> {
-    if (!(await kindIsInstalled())) {
-        throw new PreflightError('Missing required dependency: kind', [
-            'Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation',
-        ]);
-    }
+export async function kindEnsureCluster({
+  clusterName,
+  createIfMissing,
+  logger,
+  stdio,
+}: KindEnsureClusterArgs): Promise<{ created: boolean }> {
+  if (!(await kindIsInstalled())) {
+    throw new PreflightError('Missing required dependency: kind', [
+      'Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation',
+    ]);
+  }
 
-    const clusters = await kindListClusters();
-    if (clusters.includes(clusterName)) {
-        logger.debug(`kind cluster already exists: ${clusterName}`);
-        return;
-    }
+  const clusters = await kindListClusters();
+  if (clusters.includes(clusterName)) {
+    logger.debug(`kind cluster already exists: ${clusterName}`);
+    return { created: false };
+  }
 
-    if (!createIfMissing) {
-        throw new PreflightError(`kind cluster "${clusterName}" not found`, [
-            `Re-run with --create-cluster to provision ${clusterName}`,
-        ]);
-    }
+  if (!createIfMissing) {
+    throw new PreflightError(`kind cluster "${clusterName}" not found`, [
+      `Re-run with --create-cluster to provision ${clusterName}`,
+    ]);
+  }
 
-    logger.info(`Creating kind cluster "${clusterName}"...`);
-    await execa('kind', ['create', 'cluster', '--name', clusterName], { stdio: 'inherit' });
+  logger.debug(`kind create cluster ${clusterName}`);
+  await execa('kind', ['create', 'cluster', '--name', clusterName], { stdio: stdio ?? 'pipe' });
+  return { created: true };
 }
 

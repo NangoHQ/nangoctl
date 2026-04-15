@@ -10,6 +10,11 @@ export function nangoServerPersistenceClaimName(releaseName: string): string {
   return `${helmCommonFullname(releaseName)}-server`;
 }
 
+/** Deployment name for the server workload (`server.names.fullname` in nango-helm-charts). */
+export function nangoServerDeploymentName(releaseName: string): string {
+  return `${helmCommonFullname(releaseName)}-server`;
+}
+
 /**
  * Mirrors `common.names.fullname` from Nango Helm charts (bitnami common templates).
  * When the sanitized release name contains the chart name, the fullname is the release name only.

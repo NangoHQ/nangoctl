@@ -54,11 +54,30 @@ export class Kubectl {
   /** Raw kubectl for advanced use (e.g. delete pvc, delete ns). */
   async run(
     args: string[],
-    opts: { kubeContext?: string; namespace?: string; allowNonZeroExit?: boolean; skipNamespace?: boolean } = {}
+    opts: {
+      kubeContext?: string;
+      namespace?: string;
+      allowNonZeroExit?: boolean;
+      skipNamespace?: boolean;
+      stdio?: 'inherit' | 'pipe';
+    } = {}
   ): Promise<void> {
     await this.proc.run('kubectl', this.withDefaults(args, opts), {
-      stdio: 'inherit',
+      stdio: opts.stdio ?? 'inherit',
       allowNonZeroExit: opts.allowNonZeroExit,
+    });
+  }
+
+  /** Wait for a Deployment rollout (used after Helm for a friendly status line). */
+  async rolloutStatusDeployment(
+    name: string,
+    opts: { kubeContext?: string; namespace?: string; timeout?: string; stdio?: 'inherit' | 'pipe' }
+  ): Promise<void> {
+    const timeout = opts.timeout ?? '3m';
+    await this.run(['rollout', 'status', `deployment/${name}`, `--timeout=${timeout}`], {
+      kubeContext: opts.kubeContext,
+      namespace: opts.namespace,
+      stdio: opts.stdio ?? 'pipe',
     });
   }
 

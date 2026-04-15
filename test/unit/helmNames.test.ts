@@ -4,6 +4,7 @@ import {
   elasticsearchHttpUrl,
   helmCommonFullname,
   nangoComponentServiceUrl,
+  nangoServerDeploymentName,
   nangoServerPersistenceClaimName,
   nangoServerServiceName,
 } from '../../src/core/helm/names.js';
@@ -17,6 +18,10 @@ describe('helm naming helpers', () => {
   it('derives server PVC name (server.names.fullname)', () => {
     expect(nangoServerPersistenceClaimName('nango')).toBe('nango-server');
     expect(nangoServerPersistenceClaimName('acme')).toBe('acme-nango-server');
+  });
+
+  it('server Deployment name matches PVC / workload fullname', () => {
+    expect(nangoServerDeploymentName('nango')).toBe(nangoServerPersistenceClaimName('nango'));
   });
 
   it('matches chart fullname when release contains chart name', () => {

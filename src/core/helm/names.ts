@@ -52,3 +52,30 @@ export function elasticsearchHttpUrl(helmReleaseName: string, namespace: string)
   const rel = helmReleaseSanitized(helmReleaseName);
   return `http://${rel}-elasticsearch.${namespace}.svc.cluster.local:9200`;
 }
+
+/**
+ * OpenSearch Helm sub-release name (separate from the main Nango release).
+ * Example: `nango` → `nango-logs-opensearch`.
+ */
+export function opensearchLogsHelmReleaseName(mainRelease: string): string {
+  const rel = helmReleaseSanitized(mainRelease);
+  return `${rel}-logs-opensearch`.slice(0, 53).replace(/-+$/g, '');
+}
+
+/**
+ * `clusterName` passed to the OpenSearch Helm chart (must stay in sync with `opensearch.yml` and Services).
+ * Example: `nango` → `nango-opensearch-logs`.
+ */
+export function opensearchClusterName(mainRelease: string): string {
+  const rel = helmReleaseSanitized(mainRelease);
+  return `${rel}-opensearch-logs`.replace(/--+/g, '-').slice(0, 63).replace(/-+$/g, '');
+}
+
+/** OpenSearch chart exposes the REST Service as `{clusterName}-master` for the default master nodeGroup. */
+export function opensearchHttpUrl(clusterName: string, namespace: string): string {
+  return `http://${clusterName}-master.${namespace}.svc.cluster.local:9200`;
+}
+
+export function opensearchMasterStatefulSetName(clusterName: string): string {
+  return `${clusterName}-master`;
+}

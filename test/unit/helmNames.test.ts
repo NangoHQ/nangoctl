@@ -7,6 +7,10 @@ import {
   nangoServerDeploymentName,
   nangoServerPersistenceClaimName,
   nangoServerServiceName,
+  opensearchClusterName,
+  opensearchHttpUrl,
+  opensearchLogsHelmReleaseName,
+  opensearchMasterStatefulSetName,
 } from '../../src/core/helm/names.js';
 
 describe('helm naming helpers', () => {
@@ -42,5 +46,21 @@ describe('helm naming helpers', () => {
     expect(elasticsearchHttpUrl('nango', 'nango')).toBe(
       'http://nango-elasticsearch.nango.svc.cluster.local:9200'
     );
+  });
+
+  it('derives OpenSearch sub-release name from the main release', () => {
+    expect(opensearchLogsHelmReleaseName('nango')).toBe('nango-logs-opensearch');
+  });
+
+  it('derives OpenSearch cluster name for chart values', () => {
+    expect(opensearchClusterName('nango')).toBe('nango-opensearch-logs');
+  });
+
+  it('builds in-cluster HTTP URL for OpenSearch master Service', () => {
+    expect(opensearchHttpUrl('my-os', 'nango')).toBe('http://my-os-master.nango.svc.cluster.local:9200');
+  });
+
+  it('matches OpenSearch master StatefulSet name for rollout status', () => {
+    expect(opensearchMasterStatefulSetName('my-os')).toBe('my-os-master');
   });
 });

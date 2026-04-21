@@ -1,5 +1,6 @@
 import YAML from 'yaml';
 
+import type { LogsProvider } from '../logs/types.js';
 import { DEFAULT_CONNECT_UI_POD_PORT, NANGO_IMAGE_APP_ROOT, NANGO_PERSISTENCE_MOUNT_PATH } from '../defaults.js';
 import { nangoServerPersistenceClaimName } from '../helm/names.js';
 import { LOCAL_CONFIGMAP_NAME, LOCAL_SECRET_NAME } from '../state.js';
@@ -15,6 +16,8 @@ export type GeneratedValuesContext = {
 export type LocalHelmFlags = {
   lowResource?: boolean;
   imageTag?: string;
+  /** When `opensearch`, Bitnami Elasticsearch subchart is disabled (OpenSearch installed separately). */
+  logsProvider?: LogsProvider;
 };
 
 export type GeneratedValuesOutput = {
@@ -90,7 +93,7 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
 
     postgresql: { enabled: true },
     redis: { enabled: true },
-    elasticsearch: { enabled: true },
+    elasticsearch: { enabled: flags.logsProvider !== 'opensearch' },
     metering: { enabled: false },
   };
 

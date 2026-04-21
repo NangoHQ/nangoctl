@@ -5,7 +5,14 @@ import YAML from 'yaml';
 import { generateLocalConfigMap } from '../config/generateConfigMap.js';
 import type { LocalRuntimeConfig } from '../config/localConfigSchema.js';
 import { generateLocalSecrets, renderKubernetesSecret } from '../config/generateSecret.js';
-import { elasticsearchHttpUrl, helmCommonFullname, nangoComponentServiceUrl } from '../helm/names.js';
+import {
+  elasticsearchHttpUrl,
+  helmCommonFullname,
+  nangoComponentServiceUrl,
+  opensearchClusterName,
+  opensearchHttpUrl,
+} from '../helm/names.js';
+import type { LogsProvider } from '../logs/types.js';
 import { localPostgresUrl, localRedisUrl } from './bitnamiLocalDeps.js';
 import {
   DEFAULT_CONNECT_UI_POD_PORT,
@@ -47,6 +54,8 @@ export type MaterializeLocalRuntimeInput = {
   seed: string;
   lowResource: boolean;
   imageTag?: string;
+  /** Default `elasticsearch`; when `opensearch`, Bitnami ES is disabled and URL points at the OpenSearch Service. */
+  logsProvider?: LogsProvider;
 };
 
 export type MaterializeLocalRuntimeResult = {
@@ -74,8 +83,21 @@ function buildInClusterUrls(namespace: string, release: string) {
 export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInput): Promise<MaterializeLocalRuntimeResult> {
   const packagedDefaults = await loadPackagedLocalDefaultsYaml();
   const baseValues = YAML.parse(packagedDefaults) as Record<string, unknown>;
+  const logsProvider: LogsProvider = input.logsProvider ?? 'elasticsearch';
+
   const esCfg = baseValues.elasticsearch as Record<string, unknown> | undefined;
-  const elasticsearchEnabled = Boolean(esCfg?.enabled);
+  const elasticsearchEnabledInDefaults = Boolean(esCfg?.enabled);
+
+  let elasticsearchUrl: string | undefined;
+  let logsEnabled: boolean;
+
+  if (logsProvider === 'opensearch') {
+    logsEnabled = true;
+    elasticsearchUrl = opensearchHttpUrl(opensearchClusterName(input.release), input.namespace);
+  } else {
+    logsEnabled = elasticsearchEnabledInDefaults;
+    elasticsearchUrl = logsEnabled ? elasticsearchHttpUrl(input.release, input.namespace) : undefined;
+  }
 
   const publicBaseUrl = `http://127.0.0.1:${input.serverPortLocalhost}`;
   const connectUiLocal = input.connectUiPortLocalhost ?? DEFAULT_LOCAL_CONNECT_UI_PORT;
@@ -100,8 +122,9 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     dashboardPassword: 'P@ssw0rd',
     publicBaseUrl,
     inClusterUrls,
-    elasticsearchUrl: elasticsearchEnabled ? elasticsearchHttpUrl(input.release, input.namespace) : undefined,
-    logsEnabled: elasticsearchEnabled,
+    elasticsearchUrl,
+    logsProvider,
+    logsEnabled,
     logsIndexPrefix: 'nango-local',
     integrationsFullPath: nangoIntegrationsFullPath(),
     enterpriseMode: true,
@@ -130,6 +153,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     {
       lowResource: input.lowResource,
       imageTag: input.imageTag,
+      logsProvider,
     },
     {
       namespace: input.namespace,

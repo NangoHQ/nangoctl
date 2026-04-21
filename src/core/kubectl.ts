@@ -116,6 +116,19 @@ export class Kubectl {
     });
   }
 
+  /** Wait for a StatefulSet rollout (e.g. OpenSearch master node). */
+  async rolloutStatusStatefulSet(
+    name: string,
+    opts: { kubeContext?: string; namespace?: string; timeout?: string; stdio?: 'inherit' | 'pipe' }
+  ): Promise<void> {
+    const timeout = opts.timeout ?? '3m';
+    await this.run(['rollout', 'status', `statefulset/${name}`, `--timeout=${timeout}`], {
+      kubeContext: opts.kubeContext,
+      namespace: opts.namespace,
+      stdio: opts.stdio ?? 'pipe',
+    });
+  }
+
   private withDefaults(
     args: string[],
     opts: { kubeContext?: string; namespace?: string; skipNamespace?: boolean }

@@ -30,8 +30,9 @@ export const CONFIG_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'DD_TRACING_ENABLED', classification: 'disable_in_local', notes: 'false' },
     { key: 'DD_TRACE_ENABLED', classification: 'disable_in_local', notes: 'false' },
     { key: 'DD_ENV', classification: 'override_in_local', notes: 'local' },
-    { key: 'NANGO_LOGS_ENABLED', classification: 'disable_in_local', notes: 'false unless ES subchart enabled' },
-    { key: 'NANGO_LOGS_ES_URL', classification: 'derive_from_local_infra', notes: 'in-cluster elasticsearch' },
+    { key: 'NANGO_LOGS_ENABLED', classification: 'disable_in_local', notes: 'false unless ES/OpenSearch for logs is enabled' },
+    { key: 'NANGO_LOGS_PROVIDER', classification: 'derive_from_local_infra', notes: 'elasticsearch (Bitnami subchart) or opensearch (separate Helm release)' },
+    { key: 'NANGO_LOGS_ES_URL', classification: 'derive_from_local_infra', notes: 'in-cluster Elasticsearch-compatible URL (ES or OpenSearch Service)' },
     { key: 'NANGO_PUBSUB_TRANSPORT', classification: 'override_in_local', notes: 'none' }
 ];
 

@@ -21,6 +21,8 @@ export const LocalStateSchema = z.object({
   serverLocalPort: z.number().int().min(1).max(65535).optional(),
   /** Localhost port used for Connect UI port-forward (optional for older state files). */
   connectUiLocalPort: z.number().int().min(1).max(65535).optional(),
+  /** Logs backend used on last install (optional for older state files). */
+  logsProvider: z.enum(['elasticsearch', 'opensearch']).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

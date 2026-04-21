@@ -73,6 +73,7 @@ export function generateLocalConfigMap(opts: {
 
   data.NANGO_LOGS_ENABLED = String(config.logsEnabled);
   if (config.logsEnabled && config.elasticsearchUrl) {
+    data.NANGO_LOGS_PROVIDER = config.logsProvider;
     data.NANGO_LOGS_ES_URL = config.elasticsearchUrl;
     data.NANGO_LOGS_ES_PREFIX = config.logsIndexPrefix;
     data.NANGO_LOGS_ES_INDEX_OPERATIONS = `${config.logsIndexPrefix}-operations`;

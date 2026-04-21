@@ -13,7 +13,7 @@ global:
   security:
     allowInsecureImages: true
   image:
-    tag: e1ab968079f9a141e787fb13f39bff616bfebb4c
+    tag: a6dfe3356a84de964f527ccb1e1e206f7868116c
 
 # Use in-cluster dependencies by default for local.
 # Bitnami defaults: Postgres/Redis use random passwords unless `auth` is set; connection URLs in

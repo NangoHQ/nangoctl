@@ -20,4 +20,14 @@ describe('generateLocalHelmValues', () => {
     const { values } = generateLocalHelmValues({}, ctx);
     expect(values.global).toBeUndefined();
   });
+
+  it('disables Bitnami elasticsearch when logsProvider is opensearch', () => {
+    const { values } = generateLocalHelmValues({ logsProvider: 'opensearch' }, ctx);
+    expect((values.elasticsearch as { enabled?: boolean }).enabled).toBe(false);
+  });
+
+  it('keeps elasticsearch enabled by default (no logsProvider)', () => {
+    const { values } = generateLocalHelmValues({}, ctx);
+    expect((values.elasticsearch as { enabled?: boolean }).enabled).toBe(true);
+  });
 });

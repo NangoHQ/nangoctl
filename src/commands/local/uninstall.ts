@@ -7,6 +7,7 @@ import { Helm } from '../../core/helm.js';
 import { Kubectl } from '../../core/kubectl.js';
 import { confirm } from '../../core/prompt.js';
 import { renderJson } from '../../core/output/render.js';
+import { opensearchLogsHelmReleaseName } from '../../core/helm/names.js';
 
 const schema = z.object({
   json: z.boolean().default(false),
@@ -56,6 +57,10 @@ export function buildLocalUninstallCommand(): Command {
         const kubectl = new Kubectl(ctx.proc, { kubeContext: profile.kubeContext });
 
         await helm.uninstall({ ref: { namespace: profile.namespace, release: profile.release } });
+
+        await helm.uninstall({
+          ref: { namespace: profile.namespace, release: opensearchLogsHelmReleaseName(profile.release) },
+        });
 
         if (opts.deletePvcs) {
           await kubectl.run(['delete', 'pvc', '--all'], { namespace: profile.namespace, allowNonZeroExit: true });

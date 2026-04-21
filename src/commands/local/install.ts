@@ -12,6 +12,7 @@ import { renderHuman, renderJson } from '../../core/output/render.js';
 import {
   DEFAULT_CONNECT_UI_POD_PORT,
   DEFAULT_LOCAL_CONNECT_UI_PORT,
+  DEFAULT_LOCAL_INSTALL_WAIT_TIMEOUT,
   DEFAULT_LOCAL_SERVER_PORT,
   getDefaultClusterName,
   getDefaultHelmRepo,
@@ -24,7 +25,14 @@ import { Helm } from '../../core/helm.js';
 import { kindEnsureCluster } from '../../core/kind.js';
 import { materializeLocalRuntime, defaultKubeContextForKind } from '../../core/local/materialize.js';
 import { mergeValues } from '../../core/values/mergeValues.js';
-import { nangoServerDeploymentName, nangoServerServiceName } from '../../core/helm/names.js';
+import {
+  nangoServerDeploymentName,
+  nangoServerServiceName,
+  opensearchClusterName,
+  opensearchLogsHelmReleaseName,
+  opensearchMasterStatefulSetName,
+} from '../../core/helm/names.js';
+import { installLocalOpensearch } from '../../core/opensearch/installLocalOpensearch.js';
 
 const InstallFlagsSchema = z.object({
   json: z.boolean(),
@@ -49,6 +57,8 @@ const InstallFlagsSchema = z.object({
   recreatePostgresData: z.boolean(),
   /** Nango container image tag (Helm `global.image.tag`). */
   withImageTag: z.string().min(1).optional(),
+  /** Elasticsearch (Bitnami subchart) or OpenSearch (`opensearch/opensearch` second release). */
+  logsProvider: z.enum(['elasticsearch', 'opensearch']),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -73,7 +83,7 @@ export function buildLocalInstallCommand(): Command {
     .option('--cluster-runtime <runtime>', 'Local cluster runtime', 'kind')
     .option('--cluster-name <name>', 'kind cluster name', getDefaultClusterName())
     .option('--state-dir <path>', 'Override state directory (advanced)')
-    .option('--wait-timeout <dur>', 'Wait timeout (e.g. 10m)', '10m')
+    .option('--wait-timeout <dur>', 'Helm --wait timeout (install + OpenSearch when used)', DEFAULT_LOCAL_INSTALL_WAIT_TIMEOUT)
     .option('--low-resource', 'Use low-resource defaults', false)
     .option('--rotate-secrets', 'Regenerate local secrets (destructive)', false)
     .option(
@@ -85,6 +95,11 @@ export function buildLocalInstallCommand(): Command {
       '--with-image-tag <tag>',
       'Nango image tag for all chart images (sets Helm global.image.tag; no `--set` required)',
       undefined
+    )
+    .option(
+      '--logs-provider <provider>',
+      'Logs backend: elasticsearch (Bitnami subchart) or opensearch (separate Helm release)',
+      'elasticsearch'
     )
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
@@ -112,6 +127,7 @@ export function buildLocalInstallCommand(): Command {
         rotateSecrets: Boolean(opts.rotateSecrets),
         recreatePostgresData: Boolean(opts.recreatePostgresData),
         withImageTag: opts.withImageTag,
+        logsProvider: opts.logsProvider,
       });
 
       if (!parsed.success) {
@@ -164,38 +180,6 @@ export function buildLocalInstallCommand(): Command {
           );
         }
 
-        ph = progress.phase('Generating Nango configuration (ConfigMap, Secret, Helm values)');
-        let seed: string;
-        const existingState = await readState(paths.stateFile);
-        if (existingState && !ctx.rotateSecrets) {
-          seed = existingState.seed;
-        } else {
-          seed = randomBytes(32).toString('hex');
-          await writeFile0600(paths.seedFile, `${seed}\n`);
-        }
-
-        const materialized = await materializeLocalRuntime({
-          namespace: ctx.namespace,
-          release: ctx.release,
-          serverPortLocalhost: ctx.serverPort,
-          connectUiPortLocalhost: ctx.connectUiPort,
-          seed,
-          lowResource: ctx.lowResource,
-          imageTag: ctx.withImageTag,
-        });
-
-        await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
-        await writeFile0600(paths.secretManifestFile, materialized.secretYaml);
-
-        let mergedForHelm = materialized.mergedValues;
-        for (const vf of ctx.values) {
-          const extra = YAML.parse(await readFile(vf, 'utf8')) as Record<string, unknown>;
-          mergedForHelm = mergeValues(mergedForHelm, extra);
-        }
-        const mergedYaml = YAML.stringify(mergedForHelm);
-        await writeFile0600(paths.generatedValuesFile, mergedYaml);
-        ph.succeed();
-
         const kubectl = new Kubectl(proc, { kubeContext, namespace: ctx.namespace });
         const helm = new Helm(proc, { kubeContext });
 
@@ -237,6 +221,63 @@ export function buildLocalInstallCommand(): Command {
           });
           ph.succeed();
         }
+
+        if (ctx.logsProvider === 'opensearch') {
+          const osCluster = opensearchClusterName(ctx.release);
+          ph = progress.phase('Installing OpenSearch for logs (Helm release)');
+          await installLocalOpensearch({
+            helm,
+            paths,
+            clusterName: osCluster,
+            helmRelease: opensearchLogsHelmReleaseName(ctx.release),
+            namespace: ctx.namespace,
+            waitTimeout: ctx.waitTimeout,
+            stdio: substdio,
+          });
+          ph.succeed();
+
+          ph = progress.phase('Confirming OpenSearch StatefulSet is ready');
+          await kubectl.rolloutStatusStatefulSet(opensearchMasterStatefulSetName(osCluster), {
+            kubeContext,
+            namespace: ctx.namespace,
+            timeout: ctx.waitTimeout,
+            stdio: substdio,
+          });
+          ph.succeed();
+        }
+
+        ph = progress.phase('Generating Nango configuration (ConfigMap, Secret, Helm values)');
+        let seed: string;
+        const existingState = await readState(paths.stateFile);
+        if (existingState && !ctx.rotateSecrets) {
+          seed = existingState.seed;
+        } else {
+          seed = randomBytes(32).toString('hex');
+          await writeFile0600(paths.seedFile, `${seed}\n`);
+        }
+
+        const materialized = await materializeLocalRuntime({
+          namespace: ctx.namespace,
+          release: ctx.release,
+          serverPortLocalhost: ctx.serverPort,
+          connectUiPortLocalhost: ctx.connectUiPort,
+          seed,
+          lowResource: ctx.lowResource,
+          imageTag: ctx.withImageTag,
+          logsProvider: ctx.logsProvider,
+        });
+
+        await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
+        await writeFile0600(paths.secretManifestFile, materialized.secretYaml);
+
+        let mergedForHelm = materialized.mergedValues;
+        for (const vf of ctx.values) {
+          const extra = YAML.parse(await readFile(vf, 'utf8')) as Record<string, unknown>;
+          mergedForHelm = mergeValues(mergedForHelm, extra);
+        }
+        const mergedYaml = YAML.stringify(mergedForHelm);
+        await writeFile0600(paths.generatedValuesFile, mergedYaml);
+        ph.succeed();
 
         ph = progress.phase('Applying ConfigMap and Secret to the cluster');
         const combinedApply = `${materialized.configMapYaml}\n---\n${materialized.secretYaml}\n`;
@@ -285,6 +326,7 @@ export function buildLocalInstallCommand(): Command {
           seed,
           serverLocalPort: ctx.serverPort,
           connectUiLocalPort: ctx.connectUiPort,
+          logsProvider: ctx.logsProvider,
           createdAt: existingState?.createdAt ?? now,
           updatedAt: now,
         };
@@ -298,6 +340,7 @@ export function buildLocalInstallCommand(): Command {
           chart: ctx.chart,
           chartVersion: ctx.chartVersion ?? null,
           imageTag: ctx.withImageTag ?? null,
+          logsProvider: ctx.logsProvider,
           serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
           connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
           portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
@@ -323,6 +366,7 @@ export function buildLocalInstallCommand(): Command {
           `Release: ${ctx.release}`,
           `Kube context: ${kubeContext}`,
           ...(ctx.withImageTag ? [`Image tag: ${ctx.withImageTag}`] : []),
+          `Logs provider: ${ctx.logsProvider}`,
           `Server (after port-forward): ${out.serverUrl}`,
           `Connect UI (after port-forward): ${out.connectUiUrl}`,
           `Port-forward (server): ${out.portForwardHint}`,

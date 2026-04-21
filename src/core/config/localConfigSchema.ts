@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { DEFAULT_LOCAL_CONNECT_UI_PORT, DEFAULT_LOCAL_SERVER_PORT } from '../defaults.js';
+import {
+  DEFAULT_LOCAL_CONNECT_UI_PORT,
+  DEFAULT_LOCAL_INSTALL_WAIT_TIMEOUT,
+  DEFAULT_LOCAL_SERVER_PORT,
+} from '../defaults.js';
 
 export const localInstallOptionsSchema = z.object({
   json: z.boolean().default(false),
@@ -14,7 +18,7 @@ export const localInstallOptionsSchema = z.object({
   access: z.enum(['port-forward']).default('port-forward'),
   serverPort: z.coerce.number().int().min(1024).max(65535).default(DEFAULT_LOCAL_SERVER_PORT),
   connectUiPort: z.coerce.number().int().min(1024).max(65535).default(DEFAULT_LOCAL_CONNECT_UI_PORT),
-  waitTimeout: z.string().default('10m'),
+  waitTimeout: z.string().default(DEFAULT_LOCAL_INSTALL_WAIT_TIMEOUT),
   valuesFile: z.string().optional(),
   set: z.array(z.string()).default([]),
 });
@@ -41,8 +45,13 @@ export const LocalRuntimeConfigSchema = z.object({
     jobs: z.string(),
     runner: z.string(),
   }),
-  /** In-cluster Elasticsearch URL; set when `logsEnabled` and bitnami ES is deployed. */
+  /** In-cluster Elasticsearch- / OpenSearch-compatible HTTP URL for logs indexing. */
   elasticsearchUrl: z.string().optional(),
+  /**
+   * Which product backs `NANGO_LOGS_ES_URL` (compatible ES HTTP API). Mirrors `NANGO_LOGS_PROVIDER`
+   * in the generated ConfigMap.
+   */
+  logsProvider: z.enum(['elasticsearch', 'opensearch']),
   logsEnabled: z.boolean(),
   /** Prefix for ES index names, e.g. `nango-local` → `nango-local-operations`. */
   logsIndexPrefix: z.string(),

@@ -10,14 +10,34 @@ import {
 import { getGlobalCliOptions } from '../../core/context.js';
 import { PreflightError } from '../../core/errors.js';
 import { nangoServerServiceName } from '../../core/helm/names.js';
+import { Kubectl } from '../../core/kubectl.js';
 import { getLocalPaths, writeFile0600 } from '../../core/paths.js';
+import type { PortForwardMultiSpec } from '../../core/portForward.js';
 import {
   runForegroundPortForwardMulti,
   startDetachedPortForwardMulti,
   stopPortForwardFromPidFile,
 } from '../../core/portForward.js';
+import { ProcRunner } from '../../core/proc.js';
 import { createCommandLogger, renderJson } from '../../core/output/render.js';
 import { readState } from '../../core/state.js';
+
+/** In-cluster Unleash listens on this port (matches nangoctl's `--with-unleash` values block). */
+const UNLEASH_PORT = 4242;
+/** Service name used by `generateLocalHelmValues` (`fullnameOverride: unleash`). */
+const UNLEASH_SERVICE_NAME = 'unleash';
+
+async function unleashServiceExists(
+  kubectl: Kubectl,
+  namespace: string,
+  kubeContext: string
+): Promise<boolean> {
+  const res = await kubectl.getJson(['get', 'svc', UNLEASH_SERVICE_NAME, '-o', 'json'], {
+    kubeContext,
+    namespace,
+  });
+  return res.ok;
+}
 
 const OpenFlagsSchema = z.object({
   json: z.boolean(),
@@ -126,7 +146,7 @@ export function buildLocalOpenCommand(): Command {
       const connectUrl = `http://127.0.0.1:${connectUiPort}`;
 
       const detach = flags.detach || flags.json;
-      const pfSpec = {
+      const nangoSpec: PortForwardMultiSpec = {
         namespace,
         resource,
         kubeContext,
@@ -136,24 +156,49 @@ export function buildLocalOpenCommand(): Command {
         ],
       };
 
+      // Auto-forward Unleash when installed via `nangoctl local install --with-unleash`.
+      // We detect by Service presence so the command keeps working if the flag wasn't recorded.
+      const proc = new ProcRunner();
+      const kubectl = new Kubectl(proc, { kubeContext, namespace });
+      const unleashPresent = await unleashServiceExists(kubectl, namespace, kubeContext);
+      const unleashUrl = `http://127.0.0.1:${UNLEASH_PORT}`;
+      const unleashSpec: PortForwardMultiSpec | undefined = unleashPresent
+        ? {
+            namespace,
+            resource: `svc/${UNLEASH_SERVICE_NAME}`,
+            kubeContext,
+            mappings: [{ localPort: UNLEASH_PORT, remotePort: UNLEASH_PORT }],
+          }
+        : undefined;
+
+      const pfSpecs: PortForwardMultiSpec[] = unleashSpec ? [nangoSpec, unleashSpec] : [nangoSpec];
+
       const kubectlHint = `kubectl --context ${kubeContext} -n ${namespace} port-forward ${resource} ${serverPort}:80 ${connectUiPort}:${DEFAULT_CONNECT_UI_POD_PORT}`;
+      const unleashKubectlHint = unleashSpec
+        ? `kubectl --context ${kubeContext} -n ${namespace} port-forward svc/${UNLEASH_SERVICE_NAME} ${UNLEASH_PORT}:${UNLEASH_PORT}`
+        : undefined;
 
       if (detach) {
         await stopPortForwardFromPidFile(paths.portForwardPidFile);
 
-        const pid = await startDetachedPortForwardMulti(pfSpec);
-        await writeFile0600(paths.portForwardPidFile, `${pid}\n`);
+        const pids: number[] = [];
+        for (const spec of pfSpecs) {
+          pids.push(await startDetachedPortForwardMulti(spec));
+        }
+        await writeFile0600(paths.portForwardPidFile, `${pids.join('\n')}\n`);
 
         if (flags.json) {
           renderJson({
             ok: true,
             action: 'open',
             mode: 'detach',
-            pid,
+            pid: pids[0],
+            pids,
             pidFile: paths.portForwardPidFile,
             closeHint: 'nangoctl local close',
             serverUrl,
             connectUrl,
+            unleashUrl: unleashSpec ? unleashUrl : null,
             namespace,
             release,
             kubeContext,
@@ -161,12 +206,19 @@ export function buildLocalOpenCommand(): Command {
             portForward: {
               server: { localPort: serverPort, remotePort: 80, resource },
               connectUi: { localPort: connectUiPort, remotePort: DEFAULT_CONNECT_UI_POD_PORT, resource },
+              ...(unleashSpec
+                ? { unleash: { localPort: UNLEASH_PORT, remotePort: UNLEASH_PORT, resource: `svc/${UNLEASH_SERVICE_NAME}` } }
+                : {}),
             },
           });
         } else {
-          log.info(`Port-forward (background, pid ${pid}): ${kubectlHint}`);
+          log.info(`Port-forward (background, pid ${pids[0]}): ${kubectlHint}`);
+          if (unleashKubectlHint && pids[1] !== undefined) {
+            log.info(`Unleash port-forward (background, pid ${pids[1]}): ${unleashKubectlHint}`);
+          }
           log.info(`Server: ${serverUrl}`);
           log.info(`Connect UI: ${connectUrl}`);
+          if (unleashSpec) log.info(`Unleash: ${unleashUrl}`);
           log.info(`Stop with: nangoctl local close`);
         }
 
@@ -206,11 +258,14 @@ export function buildLocalOpenCommand(): Command {
 
       if (!flags.json) {
         log.info(`Port-forward (foreground; Ctrl+C to stop): ${kubectlHint}`);
+        if (unleashKubectlHint) log.info(`Unleash port-forward (foreground): ${unleashKubectlHint}`);
         log.info(`Server: ${serverUrl}`);
         log.info(`Connect UI: ${connectUrl}`);
+        if (unleashSpec) log.info(`Unleash: ${unleashUrl}`);
       }
 
-      await runForegroundPortForwardMulti(pfSpec);
+      // Each call registers its own SIGINT/SIGTERM handler; one Ctrl+C tears both down.
+      await Promise.all(pfSpecs.map((s) => runForegroundPortForwardMulti(s)));
     });
 
   return cmd;

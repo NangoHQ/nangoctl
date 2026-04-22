@@ -18,6 +18,8 @@ export type LocalHelmFlags = {
   imageTag?: string;
   /** When `opensearch`, Bitnami Elasticsearch subchart is disabled (OpenSearch installed separately). */
   logsProvider?: LogsProvider;
+  /** Enable the Unleash feature-flag subchart wired against the bundled postgres. */
+  unleash?: boolean;
 };
 
 export type GeneratedValuesOutput = {
@@ -105,6 +107,53 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
         tag: flags.imageTag,
       },
     };
+  }
+
+  if (flags.unleash) {
+    values.unleash = {
+      enabled: true,
+      // Triggers the chart's post-install Helm Job that creates the Unleash DB inside
+      // `<release>-postgresql`. Requires postgresql.enabled=true (chart guards this).
+      bootstrapDatabase: true,
+      // One replica avoids the "Unable to create default user 'admin'" race when two
+      // Unleash pods try to seed the admin on startup against the same fresh DB.
+      replicaCount: 1,
+      // Predictable in-cluster DNS: `unleash.<namespace>.svc.cluster.local`.
+      fullnameOverride: 'unleash',
+      image: { tag: '7.5.0' },
+      service: { type: 'ClusterIP', port: 4242 },
+      ingress: { enabled: false },
+      // The bundled subchart-postgres shares `app.kubernetes.io/instance=<release>` with the
+      // top-level postgresql subchart; their pod labels collide and both Services end up backing
+      // both pods. Point Unleash at the top-level DB instead.
+      postgresql: { enabled: false },
+      dbConfig: { database: 'unleash', ssl: 'false' },
+      env: [
+        { name: 'AUTH_TYPE', value: 'none' },
+        {
+          name: 'DATABASE_HOST',
+          value: `${ctx.release}-postgresql.${ctx.namespace}.svc.cluster.local`,
+        },
+        { name: 'DATABASE_PORT', value: '5432' },
+        { name: 'DATABASE_USERNAME', value: 'postgres' },
+        // Matches `postgresql.auth.postgresPassword` in values/local.defaults.yaml.
+        { name: 'DATABASE_PASSWORD', value: 'nango' },
+        { name: 'DATABASE_NAME', value: 'unleash' },
+        { name: 'DATABASE_SSL', value: 'false' },
+      ],
+    };
+
+    const unleashUrl = `http://unleash.${ctx.namespace}.svc.cluster.local:4242/api`;
+    const flagEnvs = [
+      { name: 'NANGO_FLAG_PROVIDER', value: 'unleash' },
+      { name: 'NANGO_UNLEASH_URL', value: unleashUrl },
+      { name: 'NANGO_UNLEASH_APP_NAME', value: 'nango-local' },
+    ];
+    for (const svc of ['server', 'jobs'] as const) {
+      const existing = values[svc] as Record<string, unknown>;
+      const existingExtra = (existing.extraEnvVars as Array<Record<string, string>> | undefined) ?? [];
+      values[svc] = { ...existing, extraEnvVars: [...existingExtra, ...flagEnvs] };
+    }
   }
 
   if (flags.lowResource) {

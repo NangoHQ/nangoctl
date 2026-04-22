@@ -15,6 +15,22 @@ async function isCmdAvailable(cmd: string, args: string[] = ['--version']): Prom
   }
 }
 
+/**
+ * README pins the supported Helm major. Helm 4 switched the install/upgrade path to server-side
+ * apply, which the current Nango chart tickles on duplicate `http`/`https` container ports.
+ */
+export const REQUIRED_HELM_MAJOR = 3;
+
+async function getHelmMajorVersion(): Promise<number | undefined> {
+  try {
+    const { stdout } = await execa('helm', ['version', '--short'], { stdio: 'pipe' });
+    const m = stdout.match(/v(\d+)\./);
+    return m ? Number(m[1]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type PrereqTool = 'docker' | 'kubectl' | 'helm' | 'kind';
 
 /** Parallel presence check for local install prerequisites. */
@@ -58,9 +74,25 @@ export async function runPreflightChecks(opts: {
     const ok = await isCmdAvailable('helm', ['version']);
     if (!ok) {
       throw new PreflightError('Helm is required but was not found or is not working.', [
-        'Install Helm 3+: https://helm.sh/docs/intro/install/',
+        `Install Helm ${REQUIRED_HELM_MAJOR}: https://helm.sh/docs/intro/install/`,
         PREREQ_BOOTSTRAP_HINT,
       ]);
+    }
+    const major = await getHelmMajorVersion();
+    if (major === undefined) {
+      throw new PreflightError('Could not parse Helm version from `helm version --short`.', [
+        'Ensure `helm version --short` runs and prints output like `v3.20.2+gabc`.',
+      ]);
+    }
+    if (major !== REQUIRED_HELM_MAJOR) {
+      const hints =
+        major > REQUIRED_HELM_MAJOR
+          ? [
+              `Helm ${major}+ defaults to server-side apply, which the Nango chart does not currently support (see README: "kubectl and Helm ${REQUIRED_HELM_MAJOR}").`,
+              `Install Helm ${REQUIRED_HELM_MAJOR} side-by-side: \`brew install helm@${REQUIRED_HELM_MAJOR}\` and prepend \`/opt/homebrew/opt/helm@${REQUIRED_HELM_MAJOR}/bin\` to PATH, or use the Helm ${REQUIRED_HELM_MAJOR} binary from https://github.com/helm/helm/releases.`,
+            ]
+          : [`Upgrade to Helm ${REQUIRED_HELM_MAJOR}: https://helm.sh/docs/intro/install/`];
+      throw new PreflightError(`Helm ${REQUIRED_HELM_MAJOR} is required; detected v${major}.x.`, hints);
     }
   }
 

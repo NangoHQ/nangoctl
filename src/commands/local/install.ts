@@ -59,6 +59,8 @@ const InstallFlagsSchema = z.object({
   withImageTag: z.string().min(1).optional(),
   /** Elasticsearch (Bitnami subchart) or OpenSearch (`opensearch/opensearch` second release). */
   logsProvider: z.enum(['elasticsearch', 'opensearch']),
+  /** Enable the Unleash feature-flag subchart (wires server/jobs env + chart bootstrap Job). */
+  withUnleash: z.boolean(),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -101,6 +103,11 @@ export function buildLocalInstallCommand(): Command {
       'Logs backend: elasticsearch (Bitnami subchart) or opensearch (separate Helm release)',
       'elasticsearch'
     )
+    .option(
+      '--with-unleash',
+      'Enable the Unleash feature-flag subchart (pointed at the bundled nango-postgresql; chart creates the Unleash DB on install)',
+      false
+    )
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
     .action(async (opts) => {
@@ -128,6 +135,7 @@ export function buildLocalInstallCommand(): Command {
         recreatePostgresData: Boolean(opts.recreatePostgresData),
         withImageTag: opts.withImageTag,
         logsProvider: opts.logsProvider,
+        withUnleash: Boolean(opts.withUnleash),
       });
 
       if (!parsed.success) {
@@ -265,6 +273,7 @@ export function buildLocalInstallCommand(): Command {
           lowResource: ctx.lowResource,
           imageTag: ctx.withImageTag,
           logsProvider: ctx.logsProvider,
+          unleash: ctx.withUnleash,
         });
 
         await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);

@@ -56,6 +56,8 @@ export type MaterializeLocalRuntimeInput = {
   imageTag?: string;
   /** Default `elasticsearch`; when `opensearch`, Bitnami ES is disabled and URL points at the OpenSearch Service. */
   logsProvider?: LogsProvider;
+  /** Enable the Unleash feature-flag subchart (wires server/jobs env + chart bootstrap Job). */
+  unleash?: boolean;
 };
 
 export type MaterializeLocalRuntimeResult = {
@@ -154,6 +156,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
       lowResource: input.lowResource,
       imageTag: input.imageTag,
       logsProvider,
+      unleash: input.unleash,
     },
     {
       namespace: input.namespace,

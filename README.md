@@ -68,7 +68,17 @@ Override with:
 ```bash
 nangoctl local install --server-port 4280 --connect-ui-port 4281
 nangoctl local install --with-image-tag 1.2.3   # sets Helm global.image.tag (all Nango images)
+nangoctl local install --with-unleash           # enable the Unleash feature-flag subchart
 ```
+
+`--with-unleash` enables the **Unleash** feature-flag subchart alongside Nango. It:
+
+- Deploys Unleash with `replicaCount: 1` and `AUTH_TYPE=none` (no token required locally)
+- Points Unleash at the bundled `nango-postgresql` (rather than spinning up a second bitnami-postgres StatefulSet, which would collide with the top-level postgres Service on shared `app.kubernetes.io/instance` labels)
+- Creates the `unleash` database on install via a chart-managed Helm Job
+- Injects `NANGO_FLAG_PROVIDER=unleash`, `NANGO_UNLEASH_URL`, `NANGO_UNLEASH_APP_NAME=nango-local` into the **server** and **jobs** pods
+
+Once installed, `nangoctl local open` automatically forwards the Unleash UI on `http://127.0.0.1:4242` in addition to the Nango server/Connect UI (no flag needed — detected at runtime from the `unleash` Service).
 
 State (cluster name, namespace, ports, etc.) is stored under your user config directory (on macOS: `~/Library/Application Support/nangoctl/local`).
 
@@ -80,6 +90,8 @@ nangoctl local open
 
 By default this runs **one** `kubectl port-forward` with **both** ports (server **80** and Connect UI **3009** mapped to localhost **4280** and **4281**), **blocks** in the terminal, and opens the **dashboard** in your browser. **Press Ctrl+C** to stop forwarding and return to the shell.
 
+If the `unleash` Service is present (installed via `--with-unleash`), a second `kubectl port-forward` is started in parallel exposing the Unleash UI on `http://127.0.0.1:4242`. One Ctrl+C stops both; `--detach` records both PIDs in `port-forward.pid` so `nangoctl local close` tears down the pair.
+
 - **`--detach`** — run port-forward in the **background** and exit. The kubectl PID is stored in `port-forward.pid` under your state directory so you can stop it later with **`nangoctl local close`**.
 - **`--json`** — prints machine-readable output and also runs in the background (same idea as `--detach`).
 - **`--open-connect`** — also open the Connect UI in the browser.
@@ -89,6 +101,7 @@ Then:
 
 - **Dashboard / API:** `http://127.0.0.1:4280` (or the `--server-port` you chose)
 - **Connect UI:** `http://127.0.0.1:4281` (or your `--connect-ui-port`)
+- **Unleash UI (if installed):** `http://127.0.0.1:4242`
 
 Stop a background session:
 

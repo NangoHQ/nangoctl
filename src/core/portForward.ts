@@ -192,7 +192,8 @@ export class PortForwardManager {
 }
 
 /**
- * Stops a detached session recorded in `port-forward.pid` (SIGTERM + remove file).
+ * Stops detached session(s) recorded in `port-forward.pid` (one PID per line;
+ * single-line legacy files are still supported). SIGTERMs each and removes the file.
  */
 export async function stopPortForwardFromPidFile(pidFilePath: string): Promise<{
   ok: boolean;
@@ -204,8 +205,13 @@ export async function stopPortForwardFromPidFile(pidFilePath: string): Promise<{
   } catch {
     return { ok: false, message: 'No port-forward session file found.' };
   }
-  const pid = parseInt(raw.trim(), 10);
-  if (!Number.isFinite(pid)) {
+  const pids = raw
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n));
+  if (pids.length === 0) {
     try {
       await unlink(pidFilePath);
     } catch {
@@ -213,25 +219,31 @@ export async function stopPortForwardFromPidFile(pidFilePath: string): Promise<{
     }
     return { ok: false, message: 'Invalid PID file; removed it.' };
   }
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException;
-    if (err.code === 'ESRCH') {
-      try {
-        await unlink(pidFilePath);
-      } catch {
-        // ignore
+  const stopped: number[] = [];
+  const stale: number[] = [];
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      stopped.push(pid);
+    } catch (e: unknown) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === 'ESRCH') {
+        stale.push(pid);
+      } else {
+        throw e;
       }
-      return { ok: true, message: `Process ${pid} was not running; removed stale PID file.` };
     }
-    throw e;
   }
-  await new Promise((r) => setTimeout(r, 200));
+  if (stopped.length > 0) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
   try {
     await unlink(pidFilePath);
   } catch {
     // ignore
   }
-  return { ok: true, message: `Stopped kubectl port-forward (pid ${pid}).` };
+  const parts: string[] = [];
+  if (stopped.length > 0) parts.push(`Stopped kubectl port-forward (pid${stopped.length > 1 ? 's' : ''} ${stopped.join(', ')}).`);
+  if (stale.length > 0) parts.push(`Stale PID${stale.length > 1 ? 's' : ''} ${stale.join(', ')} were not running.`);
+  return { ok: true, message: parts.join(' ') };
 }

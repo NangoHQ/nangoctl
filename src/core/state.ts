@@ -5,6 +5,8 @@ import { ensureDir } from './paths.js';
 // Stable resource names for local mode.
 export const LOCAL_CONFIGMAP_NAME = 'nango-local-config';
 export const LOCAL_SECRET_NAME = 'nango-local-secrets';
+/** Short-lived keys from `aws configure export-credentials` (SSO / assume-role); injected into all Nango workloads. */
+export const LOCAL_AWS_CREDENTIALS_SECRET_NAME = 'nango-local-aws-credentials';
 
 export const LocalStateSchema = z.object({
   version: z.literal(1),
@@ -23,6 +25,8 @@ export const LocalStateSchema = z.object({
   connectUiLocalPort: z.number().int().min(1).max(65535).optional(),
   /** Logs backend used on last install (optional for older state files). */
   logsProvider: z.enum(['elasticsearch', 'opensearch']).optional(),
+  /** AWS CLI profile used with `--aws-profile` on last install (for `local aws sync`). */
+  awsProfile: z.string().min(1).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

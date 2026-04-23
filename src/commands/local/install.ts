@@ -18,7 +18,7 @@ import {
   getDefaultHelmRepo,
 } from '../../core/defaults.js';
 import { getLocalPaths, ensureStateDir, writeFile0600 } from '../../core/paths.js';
-import { readState, writeState, type LocalState } from '../../core/state.js';
+import { LOCAL_AWS_CREDENTIALS_SECRET_NAME, readState, writeState, type LocalState } from '../../core/state.js';
 import { ProcRunner } from '../../core/proc.js';
 import { Kubectl } from '../../core/kubectl.js';
 import { Helm } from '../../core/helm.js';
@@ -33,6 +33,7 @@ import {
   opensearchMasterStatefulSetName,
 } from '../../core/helm/names.js';
 import { installLocalOpensearch } from '../../core/opensearch/installLocalOpensearch.js';
+import { buildAwsCredentialsSecretYaml } from '../../core/aws/syncAwsCredentials.js';
 
 const InstallFlagsSchema = z.object({
   json: z.boolean(),
@@ -59,6 +60,10 @@ const InstallFlagsSchema = z.object({
   withImageTag: z.string().min(1).optional(),
   /** Elasticsearch (Bitnami subchart) or OpenSearch (`opensearch/opensearch` second release). */
   logsProvider: z.enum(['elasticsearch', 'opensearch']),
+  /** AWS CLI profile (SSO); exports keys into `nango-local-aws-credentials` and wires all workloads. */
+  awsProfile: z.string().min(1).optional(),
+  awsRegion: z.string().min(1).optional(),
+  skipAwsSsoLogin: z.boolean().default(false),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -101,6 +106,12 @@ export function buildLocalInstallCommand(): Command {
       'Logs backend: elasticsearch (Bitnami subchart) or opensearch (separate Helm release)',
       'elasticsearch'
     )
+    .option(
+      '--aws-profile <name>',
+      'AWS CLI profile (runs `aws sso login` unless `--skip-aws-sso-login`); creates Secret and injects into all Nango pods'
+    )
+    .option('--aws-region <region>', 'AWS region for exported credentials (default: profile config or AWS_REGION env)')
+    .option('--skip-aws-sso-login', 'Skip `aws sso login` when credentials are already fresh', false)
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
     .action(async (opts) => {
@@ -128,6 +139,11 @@ export function buildLocalInstallCommand(): Command {
         recreatePostgresData: Boolean(opts.recreatePostgresData),
         withImageTag: opts.withImageTag,
         logsProvider: opts.logsProvider,
+        awsProfile:
+          typeof opts.awsProfile === 'string' && opts.awsProfile.trim().length > 0 ? opts.awsProfile.trim() : undefined,
+        awsRegion:
+          typeof opts.awsRegion === 'string' && opts.awsRegion.trim().length > 0 ? opts.awsRegion.trim() : undefined,
+        skipAwsSsoLogin: Boolean(opts.skipAwsSsoLogin),
       });
 
       if (!parsed.success) {
@@ -246,6 +262,21 @@ export function buildLocalInstallCommand(): Command {
           ph.succeed();
         }
 
+        let awsSecretYaml: string | undefined;
+        if (ctx.awsProfile) {
+          ph = progress.phase('AWS SSO login and exporting credentials');
+          const built = await buildAwsCredentialsSecretYaml({
+            proc,
+            profile: ctx.awsProfile,
+            namespace: ctx.namespace,
+            region: ctx.awsRegion,
+            skipAwsSsoLogin: ctx.skipAwsSsoLogin,
+          });
+          awsSecretYaml = built.secretYaml;
+          await writeFile0600(paths.awsCredentialsSecretFile, awsSecretYaml);
+          ph.succeed(`AWS region ${built.region}`);
+        }
+
         ph = progress.phase('Generating Nango configuration (ConfigMap, Secret, Helm values)');
         let seed: string;
         const existingState = await readState(paths.stateFile);
@@ -265,6 +296,7 @@ export function buildLocalInstallCommand(): Command {
           lowResource: ctx.lowResource,
           imageTag: ctx.withImageTag,
           logsProvider: ctx.logsProvider,
+          awsCredentialsSecretName: ctx.awsProfile ? LOCAL_AWS_CREDENTIALS_SECRET_NAME : undefined,
         });
 
         await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
@@ -280,8 +312,9 @@ export function buildLocalInstallCommand(): Command {
         ph.succeed();
 
         ph = progress.phase('Applying ConfigMap and Secret to the cluster');
-        const combinedApply = `${materialized.configMapYaml}\n---\n${materialized.secretYaml}\n`;
-        await kubectl.applyYaml(combinedApply, { kubeContext, namespace: ctx.namespace });
+        const applyDocs = [materialized.configMapYaml, materialized.secretYaml];
+        if (awsSecretYaml) applyDocs.push(awsSecretYaml);
+        await kubectl.applyYaml(`${applyDocs.join('\n---\n')}\n`, { kubeContext, namespace: ctx.namespace });
         ph.succeed();
 
         ph = progress.phase('Fetching Helm chart repository');
@@ -327,6 +360,7 @@ export function buildLocalInstallCommand(): Command {
           serverLocalPort: ctx.serverPort,
           connectUiLocalPort: ctx.connectUiPort,
           logsProvider: ctx.logsProvider,
+          ...(ctx.awsProfile ? { awsProfile: ctx.awsProfile } : {}),
           createdAt: existingState?.createdAt ?? now,
           updatedAt: now,
         };
@@ -341,6 +375,7 @@ export function buildLocalInstallCommand(): Command {
           chartVersion: ctx.chartVersion ?? null,
           imageTag: ctx.withImageTag ?? null,
           logsProvider: ctx.logsProvider,
+          awsProfile: ctx.awsProfile ?? null,
           serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
           connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
           portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
@@ -351,6 +386,7 @@ export function buildLocalInstallCommand(): Command {
             configMap: paths.configMapManifestFile,
             secret: paths.secretManifestFile,
             values: paths.generatedValuesFile,
+            ...(awsSecretYaml ? { awsCredentialsSecret: paths.awsCredentialsSecretFile } : {}),
           },
         };
 
@@ -367,6 +403,7 @@ export function buildLocalInstallCommand(): Command {
           `Kube context: ${kubeContext}`,
           ...(ctx.withImageTag ? [`Image tag: ${ctx.withImageTag}`] : []),
           `Logs provider: ${ctx.logsProvider}`,
+          ...(ctx.awsProfile ? [`AWS profile: ${ctx.awsProfile} (refresh: nangoctl local aws sync)`] : []),
           `Server (after port-forward): ${out.serverUrl}`,
           `Connect UI (after port-forward): ${out.connectUiUrl}`,
           `Port-forward (server): ${out.portForwardHint}`,

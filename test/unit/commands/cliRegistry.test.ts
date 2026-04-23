@@ -19,6 +19,7 @@ describe('CLI command registry', () => {
     expect(local).toBeDefined();
     const names = directSubcommandNames(local!).sort();
     expect(names).toEqual([
+      'aws',
       'bootstrap',
       'close',
       'config',

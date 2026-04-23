@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   elasticsearchHttpUrl,
   helmCommonFullname,
+  nangoComponentDeploymentName,
   nangoComponentServiceUrl,
   nangoServerDeploymentName,
   nangoServerPersistenceClaimName,
@@ -26,6 +27,12 @@ describe('helm naming helpers', () => {
 
   it('server Deployment name matches PVC / workload fullname', () => {
     expect(nangoServerDeploymentName('nango')).toBe(nangoServerPersistenceClaimName('nango'));
+  });
+
+  it('component Deployment names follow {fullname}-{component}', () => {
+    expect(nangoComponentDeploymentName('nango', 'server')).toBe(nangoServerDeploymentName('nango'));
+    expect(nangoComponentDeploymentName('nango', 'persist')).toBe('nango-persist');
+    expect(nangoComponentDeploymentName('nango', 'jobs')).toBe('nango-jobs');
   });
 
   it('matches chart fullname when release contains chart name', () => {

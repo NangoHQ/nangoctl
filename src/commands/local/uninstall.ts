@@ -8,6 +8,7 @@ import { Kubectl } from '../../core/kubectl.js';
 import { confirm } from '../../core/prompt.js';
 import { renderJson } from '../../core/output/render.js';
 import { opensearchLogsHelmReleaseName } from '../../core/helm/names.js';
+import { LOCAL_AWS_CREDENTIALS_SECRET_NAME } from '../../core/state.js';
 
 const schema = z.object({
   json: z.boolean().default(false),
@@ -60,6 +61,11 @@ export function buildLocalUninstallCommand(): Command {
 
         await helm.uninstall({
           ref: { namespace: profile.namespace, release: opensearchLogsHelmReleaseName(profile.release) },
+        });
+
+        await kubectl.run(['delete', 'secret', LOCAL_AWS_CREDENTIALS_SECRET_NAME, '--ignore-not-found'], {
+          namespace: profile.namespace,
+          allowNonZeroExit: true,
         });
 
         if (opts.deletePvcs) {

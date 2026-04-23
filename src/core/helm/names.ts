@@ -10,9 +10,16 @@ export function nangoServerPersistenceClaimName(releaseName: string): string {
   return `${helmCommonFullname(releaseName)}-server`;
 }
 
+/** Nango chart workload Deployments use `{commonFullname}-{component}`. */
+export type NangoWorkloadComponent = 'server' | 'persist' | 'orchestrator' | 'jobs' | 'runner';
+
+export function nangoComponentDeploymentName(releaseName: string, component: NangoWorkloadComponent): string {
+  return `${helmCommonFullname(releaseName)}-${component}`;
+}
+
 /** Deployment name for the server workload (`server.names.fullname` in nango-helm-charts). */
 export function nangoServerDeploymentName(releaseName: string): string {
-  return `${helmCommonFullname(releaseName)}-server`;
+  return nangoComponentDeploymentName(releaseName, 'server');
 }
 
 /**

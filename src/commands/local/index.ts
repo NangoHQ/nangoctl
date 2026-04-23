@@ -8,6 +8,7 @@ import { buildLocalCloseCommand } from './close.js';
 import { buildLocalCredentialsCommand } from './credentials.js';
 import { buildLocalUninstallCommand } from './uninstall.js';
 import { buildLocalConfigCommand } from './config.js';
+import { buildLocalAwsCommand } from './awsSync.js';
 
 export function makeLocalCommand(): Command {
   return new Command('local')
@@ -20,7 +21,8 @@ export function makeLocalCommand(): Command {
     .addCommand(buildLocalCloseCommand())
     .addCommand(buildLocalCredentialsCommand())
     .addCommand(buildLocalUninstallCommand())
-    .addCommand(buildLocalConfigCommand());
+    .addCommand(buildLocalConfigCommand())
+    .addCommand(buildLocalAwsCommand());
 }
 
 export function registerLocalCommands(program: Command): void {

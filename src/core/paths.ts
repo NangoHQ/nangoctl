@@ -16,6 +16,8 @@ export const LocalPaths = z.object({
   generatedValuesFile: z.string(),
   configMapManifestFile: z.string(),
   secretManifestFile: z.string(),
+  /** Written when `--aws-profile` is used; mirrors the Secret applied to the cluster. */
+  awsCredentialsSecretFile: z.string(),
 });
 export type LocalPaths = z.infer<typeof LocalPaths>;
 
@@ -46,6 +48,7 @@ export async function getLocalPaths(stateDir?: string): Promise<LocalPaths> {
     generatedValuesFile: path.join(base, 'generated.values.yaml'),
     configMapManifestFile: path.join(base, 'configmap.yaml'),
     secretManifestFile: path.join(base, 'secret.yaml'),
+    awsCredentialsSecretFile: path.join(base, 'aws-credentials.secret.yaml'),
   });
 }
 

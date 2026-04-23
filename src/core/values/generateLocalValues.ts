@@ -18,6 +18,8 @@ export type LocalHelmFlags = {
   imageTag?: string;
   /** When `opensearch`, Bitnami Elasticsearch subchart is disabled (OpenSearch installed separately). */
   logsProvider?: LogsProvider;
+  /** When set, append this Secret name to `extraEnvVarsSecrets` on every Nango workload (AWS keys in env). */
+  awsCredentialsSecretName?: string;
 };
 
 export type GeneratedValuesOutput = {
@@ -25,9 +27,16 @@ export type GeneratedValuesOutput = {
   values: Record<string, unknown>;
 };
 
+function extraEnvSecrets(flags: LocalHelmFlags): string[] {
+  const base = [LOCAL_SECRET_NAME];
+  const name = flags.awsCredentialsSecretName;
+  return name ? [...base, name] : base;
+}
+
 export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedValuesContext): GeneratedValuesOutput {
   const connectUiPort = ctx.connectUiPortInPod ?? DEFAULT_CONNECT_UI_POD_PORT;
   const serverPvcName = nangoServerPersistenceClaimName(ctx.release);
+  const secrets = extraEnvSecrets(flags);
 
   const values: Record<string, unknown> = {
     namespaceOverride: ctx.namespace,
@@ -52,7 +61,7 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
       },
       extraContainerPorts: [{ name: 'connect-ui', containerPort: connectUiPort }],
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
-      extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
+      extraEnvVarsSecrets: secrets,
       persistence: {
         enabled: true,
         mountPath: NANGO_PERSISTENCE_MOUNT_PATH,
@@ -64,19 +73,19 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
       ingress: { enabled: false },
       service: { type: 'ClusterIP' },
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
-      extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
+      extraEnvVarsSecrets: secrets,
     },
     orchestrator: {
       ingress: { enabled: false },
       service: { type: 'ClusterIP' },
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
-      extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
+      extraEnvVarsSecrets: secrets,
     },
     jobs: {
       ingress: { enabled: false },
       service: { type: 'ClusterIP' },
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
-      extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
+      extraEnvVarsSecrets: secrets,
       persistence: {
         enabled: true,
         mountPath: NANGO_PERSISTENCE_MOUNT_PATH,
@@ -88,7 +97,7 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
       ingress: { enabled: false },
       service: { type: 'ClusterIP' },
       extraEnvVarsCMs: [LOCAL_CONFIGMAP_NAME],
-      extraEnvVarsSecrets: [LOCAL_SECRET_NAME],
+      extraEnvVarsSecrets: secrets,
     },
 
     postgresql: { enabled: true },

@@ -56,6 +56,8 @@ export type MaterializeLocalRuntimeInput = {
   imageTag?: string;
   /** Default `elasticsearch`; when `opensearch`, Bitnami ES is disabled and URL points at the OpenSearch Service. */
   logsProvider?: LogsProvider;
+  /** Secret name appended to `extraEnvVarsSecrets` on all workloads when using `--aws-profile`. */
+  awsCredentialsSecretName?: string;
 };
 
 export type MaterializeLocalRuntimeResult = {
@@ -154,6 +156,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
       lowResource: input.lowResource,
       imageTag: input.imageTag,
       logsProvider,
+      awsCredentialsSecretName: input.awsCredentialsSecretName,
     },
     {
       namespace: input.namespace,

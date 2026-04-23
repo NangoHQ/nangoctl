@@ -30,4 +30,13 @@ describe('generateLocalHelmValues', () => {
     const { values } = generateLocalHelmValues({}, ctx);
     expect((values.elasticsearch as { enabled?: boolean }).enabled).toBe(true);
   });
+
+  it('appends AWS credentials Secret to all workloads when awsCredentialsSecretName is set', () => {
+    const { values } = generateLocalHelmValues({ awsCredentialsSecretName: 'nango-local-aws-credentials' }, ctx);
+    for (const key of ['server', 'persist', 'orchestrator', 'jobs', 'runner'] as const) {
+      const secrets = (values[key] as { extraEnvVarsSecrets?: string[] }).extraEnvVarsSecrets;
+      expect(secrets).toContain('nango-local-secrets');
+      expect(secrets).toContain('nango-local-aws-credentials');
+    }
+  });
 });

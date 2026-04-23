@@ -27,6 +27,8 @@ export const LocalStateSchema = z.object({
   logsProvider: z.enum(['elasticsearch', 'opensearch']).optional(),
   /** AWS CLI profile used with `--aws-profile` on last install (for `local aws sync`). */
   awsProfile: z.string().min(1).optional(),
+  /** Last `LAMBDA_ENABLED` value from `local install` (optional for older state files). */
+  lambdaEnabled: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

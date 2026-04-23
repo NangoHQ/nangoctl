@@ -58,6 +58,8 @@ export const LocalRuntimeConfigSchema = z.object({
   /** Absolute path in server/jobs pods where `providers.yaml` and integrations live (see Helm persistence mount). */
   integrationsFullPath: z.string(),
   enterpriseMode: z.boolean().optional(),
+  /** When true, sets `LAMBDA_ENABLED=true` in the local ConfigMap for all workloads that mount it. */
+  lambdaEnabled: z.boolean(),
 });
 
 export type LocalRuntimeConfig = z.infer<typeof LocalRuntimeConfigSchema>;

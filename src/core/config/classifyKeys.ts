@@ -33,7 +33,8 @@ export const CONFIG_KEY_CLASSIFICATIONS: KeyClass[] = [
     { key: 'NANGO_LOGS_ENABLED', classification: 'disable_in_local', notes: 'false unless ES/OpenSearch for logs is enabled' },
     { key: 'NANGO_LOGS_PROVIDER', classification: 'derive_from_local_infra', notes: 'elasticsearch (Bitnami subchart) or opensearch (separate Helm release)' },
     { key: 'NANGO_LOGS_ES_URL', classification: 'derive_from_local_infra', notes: 'in-cluster Elasticsearch-compatible URL (ES or OpenSearch Service)' },
-    { key: 'NANGO_PUBSUB_TRANSPORT', classification: 'override_in_local', notes: 'none' }
+    { key: 'NANGO_PUBSUB_TRANSPORT', classification: 'override_in_local', notes: 'none' },
+    { key: 'LAMBDA_ENABLED', classification: 'override_in_local', notes: '`local install --lambda-enabled` or default false' }
 ];
 
 export const SECRET_KEY_CLASSIFICATIONS: KeyClass[] = [

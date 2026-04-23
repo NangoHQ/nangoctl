@@ -69,6 +69,8 @@ export function generateLocalConfigMap(opts: {
 
     NANGO_SLACK_INTEGRATION_KEY: 'slack-notifications',
     PUBLIC_AUTHENTICATION_DEPRECATION_DATE: '9999-12-31',
+
+    LAMBDA_ENABLED: String(config.lambdaEnabled),
   };
 
   data.NANGO_LOGS_ENABLED = String(config.logsEnabled);

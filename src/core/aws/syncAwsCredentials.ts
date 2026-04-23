@@ -1,7 +1,7 @@
 import { PreflightError } from '../errors.js';
 import type { ProcRunner } from '../proc.js';
 import type { Kubectl } from '../kubectl.js';
-import { nangoComponentDeploymentName, type NangoWorkloadComponent } from '../helm/names.js';
+import { restartNangoDeployments } from '../restartNangoDeployments.js';
 
 import {
   assertAwsCliAvailable,
@@ -10,8 +10,6 @@ import {
   runAwsSsoLogin,
 } from './exportCredentials.js';
 import { renderAwsCredentialsSecretManifest } from './renderAwsSecret.js';
-
-const WORKLOADS: NangoWorkloadComponent[] = ['server', 'persist', 'orchestrator', 'jobs', 'runner'];
 
 export type BuildAwsSecretOpts = {
   proc: ProcRunner;
@@ -58,6 +56,7 @@ export async function applyAwsCredentialsSecret(opts: {
   await opts.kubectl.applyYaml(opts.secretYaml, { kubeContext: opts.kubeContext, namespace: opts.namespace });
 }
 
+/** @deprecated Use {@link restartNangoDeployments} from `restartNangoDeployments.js`. */
 export async function restartNangoWorkloadsForAws(opts: {
   kubectl: Kubectl;
   release: string;
@@ -65,12 +64,5 @@ export async function restartNangoWorkloadsForAws(opts: {
   namespace: string;
   stdio: 'inherit' | 'pipe';
 }): Promise<void> {
-  for (const w of WORKLOADS) {
-    const dep = nangoComponentDeploymentName(opts.release, w);
-    await opts.kubectl.run(['rollout', 'restart', `deployment/${dep}`], {
-      kubeContext: opts.kubeContext,
-      namespace: opts.namespace,
-      stdio: opts.stdio,
-    });
-  }
+  await restartNangoDeployments(opts);
 }

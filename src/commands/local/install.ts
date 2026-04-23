@@ -34,6 +34,7 @@ import {
 } from '../../core/helm/names.js';
 import { installLocalOpensearch } from '../../core/opensearch/installLocalOpensearch.js';
 import { buildAwsCredentialsSecretYaml } from '../../core/aws/syncAwsCredentials.js';
+import { restartNangoDeployments } from '../../core/restartNangoDeployments.js';
 
 const InstallFlagsSchema = z.object({
   json: z.boolean(),
@@ -64,6 +65,8 @@ const InstallFlagsSchema = z.object({
   awsProfile: z.string().min(1).optional(),
   awsRegion: z.string().min(1).optional(),
   skipAwsSsoLogin: z.boolean().default(false),
+  /** Sets `LAMBDA_ENABLED` in the ConfigMap; pods are restarted after install so env takes effect. */
+  lambdaEnabled: z.boolean().default(false),
 });
 
 export function buildLocalInstallCommand(): Command {
@@ -112,6 +115,7 @@ export function buildLocalInstallCommand(): Command {
     )
     .option('--aws-region <region>', 'AWS region for exported credentials (default: profile config or AWS_REGION env)')
     .option('--skip-aws-sso-login', 'Skip `aws sso login` when credentials are already fresh', false)
+    .option('--lambda-enabled', 'Set LAMBDA_ENABLED=true in the ConfigMap (default: false)', false)
     .option('--json', 'Machine-readable output', false)
     .option('--verbose', 'Show full kind/Helm/kubectl output (default is concise progress only)', false)
     .action(async (opts) => {
@@ -144,6 +148,7 @@ export function buildLocalInstallCommand(): Command {
         awsRegion:
           typeof opts.awsRegion === 'string' && opts.awsRegion.trim().length > 0 ? opts.awsRegion.trim() : undefined,
         skipAwsSsoLogin: Boolean(opts.skipAwsSsoLogin),
+        lambdaEnabled: Boolean(opts.lambdaEnabled),
       });
 
       if (!parsed.success) {
@@ -297,6 +302,7 @@ export function buildLocalInstallCommand(): Command {
           imageTag: ctx.withImageTag,
           logsProvider: ctx.logsProvider,
           awsCredentialsSecretName: ctx.awsProfile ? LOCAL_AWS_CREDENTIALS_SECRET_NAME : undefined,
+          lambdaEnabled: ctx.lambdaEnabled,
         });
 
         await writeFile0600(paths.configMapManifestFile, materialized.configMapYaml);
@@ -337,11 +343,21 @@ export function buildLocalInstallCommand(): Command {
         });
         ph.succeed('Helm release is deployed');
 
+        ph = progress.phase('Restarting Nango workloads (ConfigMap / Secret env is not hot-reloaded)');
+        await restartNangoDeployments({
+          kubectl,
+          release: ctx.release,
+          kubeContext,
+          namespace: ctx.namespace,
+          stdio: substdio,
+        });
+        ph.succeed();
+
         ph = progress.phase('Confirming Nango server deployment is ready');
         await kubectl.rolloutStatusDeployment(nangoServerDeploymentName(ctx.release), {
           kubeContext,
           namespace: ctx.namespace,
-          timeout: '3m',
+          timeout: '5m',
           stdio: substdio,
         });
         ph.succeed();
@@ -361,6 +377,7 @@ export function buildLocalInstallCommand(): Command {
           connectUiLocalPort: ctx.connectUiPort,
           logsProvider: ctx.logsProvider,
           ...(ctx.awsProfile ? { awsProfile: ctx.awsProfile } : {}),
+          lambdaEnabled: ctx.lambdaEnabled,
           createdAt: existingState?.createdAt ?? now,
           updatedAt: now,
         };
@@ -376,6 +393,7 @@ export function buildLocalInstallCommand(): Command {
           imageTag: ctx.withImageTag ?? null,
           logsProvider: ctx.logsProvider,
           awsProfile: ctx.awsProfile ?? null,
+          lambdaEnabled: ctx.lambdaEnabled,
           serverUrl: `http://127.0.0.1:${ctx.serverPort}`,
           connectUiUrl: `http://127.0.0.1:${ctx.connectUiPort}`,
           portForwardHint: `kubectl --context ${kubeContext} -n ${ctx.namespace} port-forward svc/${nangoServerServiceName(ctx.release)} ${ctx.serverPort}:80`,
@@ -404,6 +422,7 @@ export function buildLocalInstallCommand(): Command {
           ...(ctx.withImageTag ? [`Image tag: ${ctx.withImageTag}`] : []),
           `Logs provider: ${ctx.logsProvider}`,
           ...(ctx.awsProfile ? [`AWS profile: ${ctx.awsProfile} (refresh: nangoctl local aws sync)`] : []),
+          `Lambda: ${ctx.lambdaEnabled ? 'enabled (LAMBDA_ENABLED=true)' : 'disabled'}`,
           `Server (after port-forward): ${out.serverUrl}`,
           `Connect UI (after port-forward): ${out.connectUiUrl}`,
           `Port-forward (server): ${out.portForwardHint}`,

@@ -58,6 +58,8 @@ export type MaterializeLocalRuntimeInput = {
   logsProvider?: LogsProvider;
   /** Secret name appended to `extraEnvVarsSecrets` on all workloads when using `--aws-profile`. */
   awsCredentialsSecretName?: string;
+  /** Sets `LAMBDA_ENABLED` in the ConfigMap (default false). */
+  lambdaEnabled?: boolean;
 };
 
 export type MaterializeLocalRuntimeResult = {
@@ -130,6 +132,7 @@ export async function materializeLocalRuntime(input: MaterializeLocalRuntimeInpu
     logsIndexPrefix: 'nango-local',
     integrationsFullPath: nangoIntegrationsFullPath(),
     enterpriseMode: true,
+    lambdaEnabled: input.lambdaEnabled ?? false,
   };
 
   const cm = generateLocalConfigMap({

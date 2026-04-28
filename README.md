@@ -2,6 +2,16 @@
 
 CLI to install and run **[Nango](https://www.nango.dev)** locally on **Kubernetes** using the official Helm chart, a **kind** cluster, and generated ConfigMaps/secrets tuned for development.
 
+## Quick start
+
+```bash
+git clone <repo-url>
+cd nangoctl
+npm install
+npm install -g .
+nangoctl --help
+```
+
 ## Prerequisites
 
 - **Node.js** 20+

@@ -43,6 +43,11 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
 
     server: {
       ingress: { enabled: false },
+      // Entrypoint runs API + Connect UI; micro preset (384Mi) OOMs during ES migration startup.
+      resources: {
+        requests: { cpu: '500m', memory: '512Mi' },
+        limits: { cpu: '750m', memory: '1Gi' },
+      },
       // Chart defaults to `args: [node, packages/server/dist/server.js]`, which skips
       // `packages/server/entrypoint.sh` and never starts Connect UI (see Nango `Dockerfile.self_hosted`).
       command: ['/bin/bash', '-c', `cd ${NANGO_IMAGE_APP_ROOT} && exec ./packages/server/entrypoint.sh`],
@@ -117,7 +122,7 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
   }
 
   if (flags.lowResource) {
-    for (const svc of ['server', 'persist', 'orchestrator', 'jobs', 'runner'] as const) {
+    for (const svc of ['persist', 'orchestrator', 'jobs', 'runner'] as const) {
       values[svc] = {
         ...(values[svc] as Record<string, unknown>),
         autoscaling: {
@@ -127,6 +132,14 @@ export function generateLocalHelmValues(flags: LocalHelmFlags, ctx: GeneratedVal
         resourcesPreset: 'small',
       };
     }
+    // Server keeps explicit resources above; micro/small presets OOM with entrypoint + Connect UI.
+    values.server = {
+      ...(values.server as Record<string, unknown>),
+      autoscaling: {
+        ...((values.server as { autoscaling?: Record<string, unknown> })?.autoscaling ?? {}),
+        hpa: { enabled: false },
+      },
+    };
   }
 
   const yamlText = YAML.stringify(values);

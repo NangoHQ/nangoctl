@@ -31,6 +31,12 @@ describe('generateLocalHelmValues', () => {
     expect((values.elasticsearch as { enabled?: boolean }).enabled).toBe(true);
   });
 
+  it('sets server memory for entrypoint (API + Connect UI)', () => {
+    const { values } = generateLocalHelmValues({}, ctx);
+    const resources = (values.server as { resources?: { limits?: { memory?: string } } }).resources;
+    expect(resources?.limits?.memory).toBe('1Gi');
+  });
+
   it('appends AWS credentials Secret to all workloads when awsCredentialsSecretName is set', () => {
     const { values } = generateLocalHelmValues({ awsCredentialsSecretName: 'nango-local-aws-credentials' }, ctx);
     for (const key of ['server', 'persist', 'orchestrator', 'jobs', 'runner'] as const) {

@@ -68,6 +68,9 @@ elasticsearch:
 # The pod serves the API on 8080 (Service port 80) and Connect UI on 3009; generated values add
 # `server.extraContainerPorts` / `server.service.extraPorts`. Prefer in-cluster access; `nangoctl local open`
 # port-forwards the server Service (both ports).
+#
+# `resourcesPreset: micro` (384Mi limit) is too small: entrypoint runs API + Connect UI and Elasticsearch
+# index migration can OOMKill the container before /health responds on 8080.
 server:
   replicaCount: 1
   ingress:
@@ -77,7 +80,13 @@ server:
   autoscaling:
     hpa:
       enabled: false
-  resourcesPreset: micro
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 750m
+      memory: 1Gi
   extraEnvVarsCMs:
     - nango-local-config
   extraEnvVarsSecrets:

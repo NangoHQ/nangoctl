@@ -100,6 +100,12 @@ Then:
 - **Dashboard / API:** `http://127.0.0.1:4280` (or the `--server-port` you chose)
 - **Connect UI:** `http://127.0.0.1:4281` (or your `--connect-ui-port`)
 
+The dashboard is protected by basic auth, so your browser will prompt for a username and password. Both are generated during install; print them with:
+
+```bash
+nangoctl local credentials --show-secrets
+```
+
 Stop a background session:
 
 ```bash

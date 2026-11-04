@@ -24,6 +24,13 @@ export class Helm {
     }
   }
 
+  /** Major version of the local Helm client, or undefined if it cannot be parsed. */
+  async majorVersion(): Promise<number | undefined> {
+    const res = await this.proc.run('helm', ['version', '--short'], { stdio: 'pipe' });
+    const m = /v(\d+)\./.exec(res.stdout || '');
+    return m ? Number(m[1]) : undefined;
+  }
+
   async repoAddIfMissing(opts: {
     name: string;
     url: string;
@@ -64,6 +71,10 @@ export class Helm {
     for (const s of opts.set ?? []) args.push('--set', s);
     if (opts.wait) args.push('--wait');
     if (opts.timeout) args.push('--timeout', opts.timeout);
+    // Helm 4 defaults to server-side apply, which rejects the Nango chart's duplicate
+    // http/https containerPorts (both default to the same port). Force client-side apply.
+    const major = await this.majorVersion();
+    if (major !== undefined && major >= 4) args.push('--server-side=false');
     const ctx = this.opts.kubeContext;
     if (ctx) {
       args.unshift('--kube-context', ctx);
